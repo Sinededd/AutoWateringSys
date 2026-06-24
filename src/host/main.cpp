@@ -103,6 +103,8 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
     if (len == 0)
         return;
 
+    int rssi = recv_info->rx_ctrl->rssi;
+
     DEBUG_PRINTF("[ESP-NOW] Received %d bytes from receiver.\n", len);
     uint8_t type = incomingData[0];
 
@@ -124,6 +126,7 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
         root["mac"] = macStr;
         root["humidity"] = incomingReadings.hum;
         root["readingId"] = String(incomingReadings.readingId);
+        root["rssi"] = rssi;
 
         String payload;
         serializeJson(root, payload);
@@ -163,6 +166,7 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
 
         JsonDocument pairingLog;
         pairingLog["mac"] = macStr;
+        pairingLog["rssi"] = rssi;
         String pairingPayload;
         serializeJson(pairingLog, pairingPayload);
 

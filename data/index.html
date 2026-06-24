@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,6 +15,7 @@
             height: 100vh;
             margin: 0;
         }
+
         .card {
             background: white;
             padding: 30px;
@@ -23,6 +25,7 @@
             max-width: 400px;
             width: 90%;
         }
+
         h2 {
             font-size: 1.2rem;
             color: #333;
@@ -30,6 +33,7 @@
             border-bottom: 2px solid #eee;
             padding-bottom: 8px;
         }
+
         .device-list {
             list-style-type: none;
             padding: 0;
@@ -37,6 +41,7 @@
             max-height: 200px;
             overflow-y: auto;
         }
+
         .device-item {
             background: #f8f9fa;
             border: 1px solid #e9ecef;
@@ -49,61 +54,72 @@
             font-size: 0.9rem;
             font-family: monospace;
         }
-        .status-badge {
-            background: #28a745;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            font-family: Arial, sans-serif;
-        }
     </style>
 </head>
+
 <body>
 
     <div class="card">
         <h1>ESP32-C3 SuperMini</h1>
-        
+
         <h2>Запросы на подключение (ESP-NOW)</h2>
         <ul id="device-list" class="device-list">
-            </ul>
+        </ul>
     </div>
 
-<script>
-    if (!!window.EventSource) {
-        // Подключаемся к SSE-потоку сервера
-        const source = new EventSource('/events');
+    <script>
+        // Функция для определения цвета уровня сигнала (RSSI)
+        function getRSSIColor(rssi) {
+            if (rssi >= -67) return '#28a745'; // Отличный сигнал (Зеленый)
+            if (rssi >= -80) return '#ffc107'; // Средний сигнал (Желтый)
+            return '#dc3545';                  // Плохой сигнал (Красный)
+        }
 
-        source.addEventListener('open', function(e) {
-            console.log("SSE соединение установлено");
-        }, false);
+        if (!!window.EventSource) {
+            const source = new EventSource('/events');
 
-        source.addEventListener('error', function(e) {
-            if (e.target.readyState == EventSource.CLOSED) {
-                console.log("SSE соединение закрыто");
-            }
-        }, false);
+            source.addEventListener('open', function (e) {
+                console.log("SSE соединение установлено");
+            }, false);
 
-        // Слушаем событие 'pairing_request' от ESP32
-        source.addEventListener('pairing_request', function(e) {
-            console.log("Новый запрос на сопряжение:", e.data);
-            const data = JSON.parse(e.data);
-            const list = document.getElementById('device-list');
+            source.addEventListener('error', function (e) {
+                if (e.target.readyState == EventSource.CLOSED) {
+                    console.log("SSE соединение закрыто");
+                }
+            }, false);
 
-            // Проверяем, нет ли уже этого устройства в списке на экране
-            if (!document.getElementById(data.mac)) {
-                const li = document.createElement('li');
-                li.id = data.mac;
-                li.className = 'device-item';
-                li.innerHTML = `
-                    <span>${data.mac}</span>
-                `;
-                list.appendChild(li);
-            }
-        }, false);
-    } else {
-        console.log("Ваш браузер не поддерживает EventSource.");
-    }
-</script>
+            source.addEventListener('pairing_request', function (e) {
+                console.log("Новый запрос на сопряжение:", e.data);
+                const data = JSON.parse(e.data);
+                const list = document.getElementById('device-list');
+
+                if (!document.getElementById(data.mac)) {
+                    const li = document.createElement('li');
+                    li.id = data.mac;
+                    li.className = 'device-item';
+
+                    let rssiColor = getRSSIColor(data.rssi);
+                    li.innerHTML = `
+                        <span>${data.mac}</span>
+                        <span class="rssi-value" style="color: ${rssiColor}; font-weight: bold;">
+                            (${data.rssi} dBm)
+                        </span>
+                    `;
+                    list.appendChild(li);
+                } else {
+                    const existingItem = document.getElementById(data.mac);
+                    const rssiSpan = existingItem.querySelector('.rssi-value');
+                    if (rssiSpan) {
+                        let rssiColor = getRSSIColor(data.rssi);
+                        rssiSpan.textContent = `(${data.rssi} dBm)`;
+                        rssiSpan.style.color = rssiColor;
+                    }
+                }
+            }, false);
+        } else {
+            console.log("Ваш браузер не поддерживает EventSource.");
+        }
+    </script>
 </body>
+
 </html>
