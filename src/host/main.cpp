@@ -18,6 +18,10 @@
 #include <ArduinoJson.h>
 #include "storage.h"
 
+// PIN Settings
+const uint8_t LED_PIN = 2;
+
+
 enum MessageType
 {
     PAIRING,
@@ -47,8 +51,17 @@ AsyncWebServer server(80);
 AsyncEventSource events("/events");
 
 const char *ssid = "ESP32-HOST";
-const int ledPin = 8;
-bool ledActive = false;
+bool ledActive = true;
+
+// Вспомогательная функция для конвертации строки "AA:BB:CC..." в массив байт
+void parseMacAddress(const char* macStr, uint8_t* macBytes) {
+    int values[6];
+    if (sscanf(macStr, "%X:%X:%X:%X:%X:%X", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5]) == 6) {
+        for (int i = 0; i < 6; ++i) {
+            macBytes[i] = (uint8_t)values[i];
+        }
+    }
+}
 
 void printMAC(const uint8_t *mac_addr)
 {
@@ -62,7 +75,6 @@ void OnDataSent(const wifi_tx_info_t *mac_addr, esp_now_send_status_t status)
     DEBUG_PRINT("Last Packet Send Status: ");
     DEBUG_PRINT(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success to " : "Delivery Fail to ");
     snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-
              mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
     DEBUG_PRINT(macStr);
     DEBUG_PRINTLN();
@@ -72,20 +84,17 @@ bool addPeer(const uint8_t *mac_addr)
 {
     if (esp_now_is_peer_exist(mac_addr))
     {
-        DEBUG_PRINTLN("[ESP-NOW] Устройство уже зарегистрировано в системе.");
         return true;
     }
 
     esp_now_peer_info_t peerInfo;
     memset(&peerInfo, 0, sizeof(peerInfo));
-
     memcpy(peerInfo.peer_addr, mac_addr, 6);
     peerInfo.channel = 0;
     peerInfo.encrypt = false;
     peerInfo.ifidx = WIFI_IF_AP;
 
     esp_err_t addStatus = esp_now_add_peer(&peerInfo);
-
     if (addStatus == ESP_OK)
     {
         DEBUG_PRINTLN("[ESP-NOW] Устройство успешно добавлено в список пиров.");
@@ -93,7 +102,7 @@ bool addPeer(const uint8_t *mac_addr)
     }
     else
     {
-        DEBUG_PRINTF("[ESP-NOW] Ошибка добавления устройства! Код: 0x%X\n", addStatus);
+        DEBUG_PRINTF("[ESP-NOW] Ошибка добавления пира! Код: 0x%X\n", addStatus);
         return false;
     }
 }
@@ -104,8 +113,6 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
         return;
 
     int rssi = recv_info->rx_ctrl->rssi;
-
-    DEBUG_PRINTF("[ESP-NOW] Received %d bytes from receiver.\n", len);
     uint8_t type = incomingData[0];
 
     switch (type)
@@ -114,7 +121,6 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
     {
         memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
 
-        // get string of MAC
         uint8_t localClientMac[6];
         memcpy(localClientMac, incomingReadings.macAddr, 6);
         char macStr[18];
@@ -131,12 +137,6 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
         String payload;
         serializeJson(root, payload);
 
-#ifdef DEBUG_ENABLE
-        Serial.println("Event send: ");
-        serializeJson(root, Serial);
-        Serial.println();
-#endif
-
         events.send(payload.c_str(), "new_readings", millis());
         break;
     }
@@ -145,35 +145,46 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
     {
         memcpy(&pairingData, incomingData, sizeof(pairingData));
 
-        if (pairingData.isReply != 0)
-        {
-            break;
-        }
+        if (pairingData.isReply != 0) break;
 
-        DEBUG_PRINT("Pairing request from MAC Address: ");
-#ifdef DEBUG_ENABLE
-        printMAC(pairingData.macAddr);
-#endif
-        DEBUG_PRINTLN();
-
-        // get mac of sender
         uint8_t localClientMac[6];
         memcpy(localClientMac, pairingData.macAddr, 6);
-        char macStr[18];
-        snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-                 localClientMac[0], localClientMac[1], localClientMac[2],
-                 localClientMac[3], localClientMac[4], localClientMac[5]);
 
-        JsonDocument pairingLog;
-        pairingLog["mac"] = macStr;
-        pairingLog["rssi"] = rssi;
-        String pairingPayload;
-        serializeJson(pairingLog, pairingPayload);
+        // Проверяем, авторизовано ли уже устройство ранее
+        bool isAlreadyPaired = false;
+        for (size_t i = 0; i < deviceCount; i++) {
+            if (memcmp(pairedDevices[i], localClientMac, 6) == 0) {
+                isAlreadyPaired = true;
+                break;
+            }
+        }
 
-        events.send(pairingPayload.c_str(), "pairing_request", millis());
+        // Если устройство уже в белом списке — автоотвечаем ему
+        if (isAlreadyPaired) {
+            addPeer(localClientMac);
+            struct_pairing reply;
+            reply.msgType = PAIRING;
+            reply.isReply = 1;
+            WiFi.softAPmacAddress(reply.macAddr);
+            esp_now_send(localClientMac, (uint8_t *)&reply, sizeof(reply));
+            DEBUG_PRINTLN("[ESP-NOW] Авто-ответ сопряженному устройству.");
+        } 
+        // Если устройство новое — отправляем запрос на веб-страницу для ручного подтверждения
+        else {
+            char macStr[18];
+            snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+                     localClientMac[0], localClientMac[1], localClientMac[2],
+                     localClientMac[3], localClientMac[4], localClientMac[5]);
 
-        // Сохранение датчика в памяти, и отправка ему данных сервера
+            JsonDocument pairingLog;
+            pairingLog["mac"] = macStr;
+            pairingLog["rssi"] = rssi;
+            String pairingPayload;
+            serializeJson(pairingLog, pairingPayload);
 
+            events.send(pairingPayload.c_str(), "pairing_request", millis());
+            DEBUG_PRINTLN("[ESP-NOW] Новый запрос отправлен в Web-интерфейс.");
+        }
         break;
     }
     }
@@ -210,34 +221,72 @@ void setup()
 
     if (!LittleFS.begin(true))
     {
-        Serial.println("Ошибка при монтировании LittleFS!");
+        DEBUG_PRINTLN("Ошибка при монтировании LittleFS!");
         return;
     }
 
-    pinMode(ledPin, OUTPUT);
-    digitalWrite(ledPin, ledActive ? LOW : HIGH);
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, ledActive ? HIGH : LOW);
 
     WiFi.mode(WIFI_AP);
     WiFi.setTxPower(WIFI_POWER_8_5dBm);
     WiFi.softAP(ssid);
 
-    DEBUG_PRINTLN("");
-    DEBUG_PRINT("Открытая точка доступа запущена: ");
-    DEBUG_PRINTLN(ssid);
-    DEBUG_PRINT("IP-адрес сервера: ");
-    DEBUG_PRINTLN(WiFi.softAPIP().toString());
-
     initESP_NOW();
 
     server.addHandler(&events);
 
+    // НОВЫЙ ЭНДПОИНТ: Обработка клика по кнопке «Подключить»
+    server.on("/connect", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (request->hasParam("mac")) {
+            String macStr = request->getParam("mac")->value();
+            uint8_t targetMac[6];
+            parseMacAddress(macStr.c_str(), targetMac);
+
+            // 1. Сохраняем устройство в NVS/файловую систему через storage.h
+            addDevice(targetMac); 
+            // 2. Регистрируем как пира ESP-NOW
+            addPeer(targetMac);
+
+            // 3. Отправляем ответ подтверждения (на случай если датчик прямо сейчас слушает эфир)
+            struct_pairing reply;
+            reply.msgType = PAIRING;
+            reply.isReply = 1;
+            WiFi.softAPmacAddress(reply.macAddr);
+            esp_now_send(targetMac, (uint8_t *)&reply, sizeof(reply));
+
+            DEBUG_PRINTF("[WEB] Устройство %s успешно одобрено пользователем.\n", macStr.c_str());
+            request->send(200, "text/plain", "Устройство добавлено");
+        } else {
+            request->send(400, "text/plain", "Неверный запрос (нет параметра mac)");
+        }
+    });
+
+    server.on("/devices", HTTP_GET, [](AsyncWebServerRequest *request) {
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        
+        for (size_t i = 0; i < deviceCount; i++) {
+            char macStr[18];
+            snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+                     pairedDevices[i][0], pairedDevices[i][1], pairedDevices[i][2],
+                     pairedDevices[i][3], pairedDevices[i][4], pairedDevices[i][5]);
+            arr.add(macStr);
+        }
+        
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-              {
-    if (LittleFS.exists("/index.html")) {
-        request->send(LittleFS, "/index.html", "text/html");
-    } else {
-        request->send(404, "text/plain", "Файл /index.html НЕ НАЙДЕН в памяти! Проверьте загрузку LittleFS.");
-    } });
+    {
+        if (LittleFS.exists("/index.html")) {
+            request->send(LittleFS, "/index.html", "text/html");
+        } else {
+            request->send(404, "text/plain", "Файл /index.html НЕ НАЙДЕН в LittleFS.");
+        } 
+    });
 
     server.begin();
     DEBUG_PRINTLN("HTTP веб-сервер успешно запущен.");
