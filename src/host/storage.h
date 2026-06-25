@@ -12,4 +12,5 @@ extern size_t deviceCount;
 void loadDevicesFromStorage();
 void saveDevicesToStorage();
 bool addDevice(const uint8_t *newMac);
+bool deleteDevice(const uint8_t *mac);
 void printMac(const uint8_t *mac);

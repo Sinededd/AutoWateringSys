@@ -107,6 +107,27 @@ bool addPeer(const uint8_t *mac_addr)
     }
 }
 
+bool deletePeer(const uint8_t *mac_addr)
+{
+    if (!esp_now_is_peer_exist(mac_addr))
+    {
+        DEBUG_PRINTLN("[ESP-NOW] Такого пира нет в системе.");
+        return false;
+    }
+
+    esp_err_t delStatus = esp_now_del_peer(mac_addr);
+    if (delStatus == ESP_OK)
+    {
+        DEBUG_PRINTLN("[ESP-NOW] Пир успешно удален из памяти ESP-NOW.");
+        return true;
+    }
+    else
+    {
+        DEBUG_PRINTF("[ESP-NOW] Ошибка удаления пира! Код: 0x%X\n", delStatus);
+        return false;
+    }
+}
+
 void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len)
 {
     if (len == 0)
@@ -229,7 +250,6 @@ void setup()
     digitalWrite(LED_PIN, ledActive ? HIGH : LOW);
 
     WiFi.mode(WIFI_AP);
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);
     WiFi.softAP(ssid);
 
     initESP_NOW();
@@ -259,6 +279,27 @@ void setup()
             request->send(200, "text/plain", "Устройство добавлено");
         } else {
             request->send(400, "text/plain", "Неверный запрос (нет параметра mac)");
+        }
+    });
+
+    server.on("/delete", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (request->hasParam("mac")) {
+            String macStr = request->getParam("mac")->value();
+            uint8_t targetMac[6];
+            parseMacAddress(macStr.c_str(), targetMac);
+
+            // 1. Удаляем из пиров ESP-NOW
+            deletePeer(targetMac); 
+
+            // 2. Удаляем из памяти NVS
+            if (deleteDevice(targetMac)) {
+                DEBUG_PRINTF("[WEB] Устройство %s успешно удалено.\n", macStr.c_str());
+                request->send(200, "text/plain", "Устройство удалено");
+            } else {
+                request->send(404, "text/plain", "Устройство не найдено в памяти");
+            }
+        } else {
+            request->send(400, "text/plain", "Ошибка: нет параметра mac");
         }
     });
 

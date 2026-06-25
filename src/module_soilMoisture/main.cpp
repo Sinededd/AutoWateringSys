@@ -1,5 +1,5 @@
 // ============================================================================
-// 1. КОНФИГУРАЦИЯ И НАСТРОЙКИ (Сюда смотрим, если нужно что-то изменить)
+// КОНФИГУРАЦИЯ И НАСТРОЙКИ
 // ============================================================================
 #define DEBUG_ENABLE
 
@@ -23,6 +23,12 @@
 // Аппаратные пины
 constexpr uint8_t BUTTON_PIN = 3;
 constexpr uint8_t LED_PIN    = 8;
+constexpr uint8_t SENSOR_POWER_PIN  = 4;
+constexpr uint8_t SENSOR_ANALOG_PIN = 1;
+
+// Настройки калибровки датчика влажности
+constexpr int AIR_VALUE   = 3100;
+constexpr int WATER_VALUE = 1600;
 
 // Интервалы и тайминги (в миллисекундах)
 constexpr unsigned long SEND_INTERVAL    = 5000;
@@ -30,7 +36,7 @@ constexpr unsigned long PAIRING_INTERVAL = 3000;
 constexpr unsigned long RESET_BLINK_TIME = 2500; // Время быстрого мигания при сбросе
 
 // ============================================================================
-// 2. ТИПЫ ДАННЫХ И СТРУКТУРЫ
+// ТИПЫ ДАННЫХ И СТРУКТУРЫ
 // ============================================================================
 enum MessageType {
     PAIRING,
@@ -57,7 +63,7 @@ typedef struct struct_pairing {
 } struct_pairing;
 
 // ============================================================================
-// 3. ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ СОСТОЯНИЯ (Глобальный статус системы)
+// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ СОСТОЯНИЯ (Глобальный статус системы)
 // ============================================================================
 Button2 btn;
 struct_message myData; 
@@ -79,7 +85,7 @@ bool currentState = true;
 bool updateMAC    = false; 
 
 // ============================================================================
-// 4. СИСТЕМНЫЕ ФУНКЦИИ И СЕТЕВАЯ ЛОГИКА
+// СИСТЕМНЫЕ ФУНКЦИИ И СЕТЕВАЯ ЛОГИКА
 // ============================================================================
 void loadMacAddress() {
     uint8_t macBuf[6];
@@ -181,7 +187,7 @@ void updateLedIndicator() {
 }
 
 // ============================================================================
-// 5. ОБРАБОТЧИКИ СОБЫТИЙ (CALLBACKS)
+// ОБРАБОТЧИКИ СОБЫТИЙ (CALLBACKS)
 // ============================================================================
 void OnDataSent(const wifi_tx_info_t *mac_addr, esp_now_send_status_t status) {
     Serial.print("Status доставки пакета: ");
@@ -230,7 +236,38 @@ void handleLongPressDetected(Button2 &b) {
 }
 
 // ============================================================================
-// 6. ОСНОВНЫЕ ФУНКЦИИ ЯДРА ARDUINO (setup / loop)
+// ФУНКЦИЯ ЧТЕНИЯ ДАТЧИКА С УПРАВЛЕНИЕМ ПИТАНИЕМ
+// ============================================================================
+float readSoilMoisture() {
+    // 1. Включаем питание датчика
+    digitalWrite(SENSOR_POWER_PIN, HIGH);
+    
+    // 2. Даем датчику время проснуться (твой рабочий 1-секундный интервал)
+    delay(1000); 
+    
+    // 3. Делаем несколько замеров в милливольтах для сглаживания шумов
+    long analogMilliVolts = 0;
+    for (int i = 0; i < 5; i++) {
+        analogMilliVolts += analogReadMilliVolts(SENSOR_ANALOG_PIN); // <--- Читаем мВ!
+        delay(5);
+    }
+    analogMilliVolts /= 5; // Среднее арифметическое в милливольтах
+
+    // 4. Мгновенно выключаем датчик
+    digitalWrite(SENSOR_POWER_PIN, LOW);
+
+    // Выводим в дебаг реальные милливольты
+    DEBUG_PRINTF("[SENSOR] Напряжение на пине: %d мВ\n", analogMilliVolts);
+
+    // 5. Переводим милливольты в проценты влажности
+    int moisturePercent = map(analogMilliVolts, AIR_VALUE, WATER_VALUE, 0, 100);
+    moisturePercent = constrain(moisturePercent, 0, 100);
+
+    return (float)moisturePercent;
+}
+
+// ============================================================================
+// ОСНОВНЫЕ ФУНКЦИИ ЯДРА ARDUINO (setup / loop)
 // ============================================================================
 void setup() {
 #ifdef DEBUG_ENABLE
@@ -239,6 +276,11 @@ void setup() {
 #endif
 
     pinMode(LED_PIN, OUTPUT);
+    pinMode(SENSOR_POWER_PIN, OUTPUT);
+    digitalWrite(SENSOR_POWER_PIN, LOW);
+
+    analogReadResolution(12);
+    analogSetAttenuation(ADC_11db);
 
     btn.begin(BUTTON_PIN);
     btn.setLongClickTime(5000);
@@ -304,7 +346,7 @@ void loop() {
                 lastTransmission = currentMillis;
                 myData.msgType = DATA;
                 WiFi.macAddress(myData.macAddr);
-                myData.hum = random(4000, 8000) / 100.0;
+                myData.hum = readSoilMoisture();
                 myData.readingId++;
 
                 Serial.printf("Отправка данных на Хост. Влажность: %.2f%%, Пакет №: %u\n", myData.hum, myData.readingId);
