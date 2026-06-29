@@ -40,7 +40,7 @@
             list-style-type: none;
             padding: 0;
             margin: 10px 0 0 0;
-            max-height: 200px;
+            max-height: 250px;
             overflow-y: auto;
         }
 
@@ -54,11 +54,18 @@
             justify-content: space-between;
             align-items: center;
             font-size: 0.9rem;
-            font-family: monospace;
-            transition: opacity 0.3s ease;
+            transition: all 0.2s ease;
         }
 
-        /* Стили для устройств без актуальных данных (Оффлайн) */
+        #connected-list .device-item {
+            cursor: pointer;
+        }
+
+        #connected-list .device-item:hover {
+            background: #edf2f7;
+            border-color: #cbd5e0;
+        }
+
         .device-item.offline {
             opacity: 0.6;
             background: #f1f3f5;
@@ -76,25 +83,16 @@
             padding: 6px 12px;
             border-radius: 6px;
             cursor: pointer;
-            font-family: Arial, sans-serif;
             font-weight: bold;
-            transition: background 0.2s;
         }
 
-        .btn-connect:hover {
-            background-color: #0056b3;
-        }
-
-        .btn-connect:disabled {
-            background-color: #6c757d;
-            cursor: not-allowed;
-        }
+        .btn-connect:hover { background-color: #0056b3; }
+        .btn-connect:disabled { background-color: #6c757d; cursor: not-allowed; }
 
         .sensor-data {
             display: flex;
             flex-direction: column;
             align-items: flex-end;
-            font-family: Arial, sans-serif;
         }
 
         .hum-val {
@@ -107,6 +105,43 @@
             font-size: 0.75rem;
             color: #777;
             margin-top: 2px;
+        }
+
+        /* СТИЛИ ДЛЯ МОДАЛЬНОГО ОКНА */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            width: 85%;
+            max-width: 350px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            text-align: left;
+            position: relative;
+        }
+        .modal-content h3 { margin-top: 0; color: #333; }
+        .modal-content label { font-size: 0.85rem; color: #555; display: block; margin-bottom: 5px;}
+        .modal-content input {
+            width: 100%; padding: 8px; border: 1px solid #ccc; 
+            border-radius: 6px; margin-bottom: 20px; box-sizing: border-box;
+        }
+        .modal-actions { display: flex; justify-content: space-between; }
+        .btn-delete {
+            background-color: #dc3545; color: white; border: none;
+            padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;
+        }
+        .btn-delete:hover { background-color: #bd2130; }
+        .btn-close {
+            background-color: #6c757d; color: white; border: none;
+            padding: 8px 14px; border-radius: 6px; cursor: pointer;
         }
     </style>
 </head>
@@ -123,19 +158,38 @@
         <ul id="connected-list" class="device-list"></ul>
     </div>
 
+    <div id="settings-modal" class="modal-overlay" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3>Настройки датчика</h3>
+            <p id="modal-mac" style="font-family: monospace; font-size:0.85rem; color:#666; margin-bottom:15px;"></p>
+            
+            <label for="sensor-name">Кастомное имя устройства:</label>
+            <input type="text" id="sensor-name" placeholder="Например, Кухня">
+            
+            <div class="modal-actions">
+                <button class="btn-delete" onclick="deleteSensorFromModal()">Удалить</button>
+                <div>
+                    <button class="btn-close" onclick="closeModal(null)">Отмена</button>
+                    <button class="btn-connect" onclick="saveSensorName()">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
+        let selectedMac = ''; // Храним текущий редактируемый датчик
+
         function getRSSIColor(rssi) {
             if (rssi >= -67) return '#28a745';
             if (rssi >= -80) return '#ffc107';
             return '#dc3545';
         }
 
-        // Шаблон для отрисовки оффлайн-устройства
-        function createOfflineRow(mac) {
+        function createOfflineRow(mac, name) {
             return `
-                <div>
-                    <span style="font-weight: bold;">${mac}</span><br>
-                    <span style="color: #6c757d; font-size: 0.8rem;">Нет данных</span>
+                <div style="font-family: monospace;">
+                    <span class="device-display-name" style="font-weight: bold; font-family: Arial, sans-serif;">${name || mac}</span><br>
+                    <span style="color: #6c757d; font-size: 0.8rem;">${mac}</span>
                 </div>
                 <div class="sensor-data">
                     <span class="hum-val">💧 --%</span>
@@ -144,26 +198,77 @@
             `;
         }
 
-        // Запрос списка уже сопряженных устройств при загрузке страницы
+        // Загрузка сопряженных устройств
         document.addEventListener('DOMContentLoaded', () => {
             fetch('/devices')
                 .then(response => response.json())
                 .then(devices => {
                     const connectedList = document.getElementById('connected-list');
-                    devices.forEach(mac => {
-                        if (!document.getElementById(mac)) {
+                    devices.forEach(dev => {
+                        if (!document.getElementById(dev.mac)) {
                             const li = document.createElement('li');
-                            li.id = mac;
-                            li.className = 'device-item offline'; // делаем серым
-                            li.innerHTML = createOfflineRow(mac);
+                            li.id = dev.mac;
+                            li.className = 'device-item offline';
+                            li.setAttribute('data-name', dev.name);
+                            li.innerHTML = createOfflineRow(dev.mac, dev.name);
+                            // Открытие модалки по клику на датчик
+                            li.onclick = () => openModal(dev.mac, dev.name);
                             connectedList.appendChild(li);
                         }
                     });
                 })
-                .catch(err => console.error("Ошибка загрузки списка устройств:", err));
+                .catch(err => console.error("Ошибка загрузки устройств:", err));
         });
 
-        // Функция отправки команды на Хост для одобрения сопряжения
+        // Открытие и закрытие модального окна
+        function openModal(mac, currentName) {
+            selectedMac = mac;
+            document.getElementById('modal-mac').textContent = `MAC: ${mac}`;
+            document.getElementById('sensor-name').value = currentName === mac ? '' : currentName;
+            document.getElementById('settings-modal').style.display = 'flex';
+        }
+
+        function closeModal(e) {
+            if(!e || e.target === document.getElementById('settings-modal') || e === null) {
+                document.getElementById('settings-modal').style.display = 'none';
+            }
+        }
+
+        // Сохранение нового имени
+        function saveSensorName() {
+            const newName = document.getElementById('sensor-name').value.trim();
+            const finalName = newName || selectedMac;
+
+            fetch(`/rename?mac=${selectedMac}&name=${encodeURIComponent(finalName)}`)
+                .then(res => {
+                    if(res.ok) {
+                        const li = document.getElementById(selectedMac);
+                        if(li) {
+                            li.setAttribute('data-name', finalName);
+                            const nameSpan = li.querySelector('.device-display-name');
+                            if(nameSpan) nameSpan.textContent = finalName;
+                            // На всякий случай обновляем onclick с новым именем
+                            li.onclick = () => openModal(selectedMac, finalName);
+                        }
+                        document.getElementById('settings-modal').style.display = 'none';
+                    } else { alert("Ошибка сохранения имени"); }
+                });
+        }
+
+        // Удаление датчика из модалки
+        function deleteSensorFromModal() {
+            if(!confirm(`Вы точно хотите удалить датчик ${selectedMac}?`)) return;
+
+            fetch(`/delete?mac=${selectedMac}`)
+                .then(res => {
+                    if(res.ok) {
+                        const li = document.getElementById(selectedMac);
+                        if(li) li.remove();
+                        document.getElementById('settings-modal').style.display = 'none';
+                    } else { alert("Ошибка при удалении"); }
+                });
+        }
+
         function connectDevice(mac) {
             const button = document.querySelector(`[data-btn="${mac}"]`);
             if (button) button.disabled = true;
@@ -171,22 +276,17 @@
             fetch(`/connect?mac=${mac}`)
                 .then(response => {
                     if (response.ok) {
-                        console.log(`Запрос на подключение ${mac} отправлен успешно`);
                         const li = document.getElementById(mac);
                         if (li) {
-                            // Переносим в список подключенных и временно делаем серым до первых данных
                             li.className = 'device-item offline';
-                            li.innerHTML = createOfflineRow(mac);
+                            li.setAttribute('data-name', mac);
+                            li.innerHTML = createOfflineRow(mac, mac);
+                            li.onclick = () => openModal(mac, mac);
                             document.getElementById('connected-list').appendChild(li);
                         }
                     } else {
                         if (button) button.disabled = false;
-                        alert("Ошибка сервера при попытке подключения");
                     }
-                })
-                .catch(err => {
-                    if (button) button.disabled = false;
-                    console.error("Ошибка сети:", err);
                 });
         }
 
@@ -194,13 +294,8 @@
             const source = new EventSource('/events');
 
             source.addEventListener('pairing_request', function (e) {
-                console.log("Новый запрос на сопряжение:", e.data);
                 const data = JSON.parse(e.data);
-                
-                // Если устройство уже есть в списке активных/подключенных, игнорируем запрос на сопряжение
-                if (document.getElementById('connected-list').querySelector(`[id="${data.mac}"]`)) {
-                    return;
-                }
+                if (document.getElementById('connected-list').querySelector(`[id="${data.mac}"]`)) return;
 
                 const pairingList = document.getElementById('pairing-list');
 
@@ -211,53 +306,38 @@
 
                     let rssiColor = getRSSIColor(data.rssi);
                     li.innerHTML = `
-                        <div>
+                        <div style="font-family: monospace;">
                             <span>${data.mac}</span><br>
-                            <span class="rssi-value" style="color: ${rssiColor}; font-size: 0.8rem; font-weight: bold;">
-                                ${data.rssi} dBm
-                            </span>
+                            <span class="rssi-value" style="color: ${rssiColor}; font-size: 0.8rem; font-weight: bold;">${data.rssi} dBm</span>
                         </div>
                         <button class="btn-connect" data-btn="${data.mac}" onclick="connectDevice('${data.mac}')">Подключить</button>
                     `;
                     pairingList.appendChild(li);
-                } else {
-                    const existingItem = document.getElementById(data.mac);
-                    const rssiSpan = existingItem.querySelector('.rssi-value');
-                    if (rssiSpan) {
-                        let rssiColor = getRSSIColor(data.rssi);
-                        rssiSpan.textContent = `${data.rssi} dBm`;
-                        rssiSpan.style.color = rssiColor;
-                    }
                 }
             }, false);
 
             source.addEventListener('new_readings', function (e) {
-                console.log("Получены данные датчика:", e.data);
                 const data = JSON.parse(e.data);
-                
                 let li = document.getElementById(data.mac);
                 const connectedList = document.getElementById('connected-list');
-                const pairingList = document.getElementById('pairing-list');
 
+                let currentName = data.mac;
                 if (!li) {
                     li = document.createElement('li');
                     li.id = data.mac;
-                    li.className = 'device-item';
+                    li.setAttribute('data-name', currentName);
+                    li.onclick = () => openModal(data.mac, currentName);
                     connectedList.appendChild(li);
                 } else {
-                    // Обязательно убираем класс 'offline', возвращая нормальный цвет
-                    li.className = 'device-item'; 
-                    if (li.parentNode === pairingList) {
-                        connectedList.appendChild(li);
-                    }
+                    currentName = li.getAttribute('data-name') || data.mac;
                 }
 
+                li.className = 'device-item'; 
                 let rssiColor = getRSSIColor(data.rssi);
                 
-                // Заполняем актуальной телеметрией
                 li.innerHTML = `
-                    <div>
-                        <span style="font-weight: bold;">${data.mac}</span><br>
+                    <div style="font-family: monospace;">
+                        <span class="device-display-name" style="font-weight: bold; font-family: Arial, sans-serif;">${currentName}</span><br>
                         <span style="color: ${rssiColor}; font-size: 0.8rem; font-weight: bold;">${data.rssi} dBm</span>
                     </div>
                     <div class="sensor-data">
@@ -266,10 +346,7 @@
                     </div>
                 `;
             }, false);
-        } else {
-            console.log("Браузер не поддерживает EventSource.");
         }
     </script>
 </body>
-
 </html>

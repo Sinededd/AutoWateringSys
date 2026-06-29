@@ -17,6 +17,7 @@
 #include <esp_now.h>
 #include <ArduinoJson.h>
 #include "storage.h"
+#include "web_server.h"
 
 // PIN Settings
 const uint8_t LED_PIN = 2;
@@ -47,8 +48,7 @@ struct_message incomingReadings;
 struct_message outgoingSetpoints;
 struct_pairing pairingData;
 
-AsyncWebServer server(80);
-AsyncEventSource events("/events");
+extern AsyncEventSource events;
 
 const char *ssid = "ESP32-HOST";
 bool ledActive = true;
@@ -174,7 +174,7 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
         // Проверяем, авторизовано ли уже устройство ранее
         bool isAlreadyPaired = false;
         for (size_t i = 0; i < deviceCount; i++) {
-            if (memcmp(pairedDevices[i], localClientMac, 6) == 0) {
+            if (memcmp(pairedDevices[i].mac, localClientMac, 6) == 0) {
                 isAlreadyPaired = true;
                 break;
             }
@@ -228,7 +228,7 @@ void initESP_NOW()
         Serial.println("Restore connections ESP-NOW...");
         for (size_t i = 0; i < deviceCount; i++)
         {
-            addPeer(pairedDevices[i]);
+            addPeer(pairedDevices[i].mac);
         }
     }
 }
@@ -240,97 +240,16 @@ void setup()
     delay(1000);
 #endif
 
-    if (!LittleFS.begin(true))
-    {
-        DEBUG_PRINTLN("Ошибка при монтировании LittleFS!");
+    if (!LittleFS.begin(true)) {
+        Serial.println("Ошибка LittleFS!");
         return;
     }
 
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, ledActive ? HIGH : LOW);
-
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(ssid);
+    WiFi.softAP("ESP32-HOST");
 
-    initESP_NOW();
-
-    server.addHandler(&events);
-
-    // НОВЫЙ ЭНДПОИНТ: Обработка клика по кнопке «Подключить»
-    server.on("/connect", HTTP_GET, [](AsyncWebServerRequest *request) {
-        if (request->hasParam("mac")) {
-            String macStr = request->getParam("mac")->value();
-            uint8_t targetMac[6];
-            parseMacAddress(macStr.c_str(), targetMac);
-
-            // 1. Сохраняем устройство в NVS/файловую систему через storage.h
-            addDevice(targetMac); 
-            // 2. Регистрируем как пира ESP-NOW
-            addPeer(targetMac);
-
-            // 3. Отправляем ответ подтверждения (на случай если датчик прямо сейчас слушает эфир)
-            struct_pairing reply;
-            reply.msgType = PAIRING;
-            reply.isReply = 1;
-            WiFi.softAPmacAddress(reply.macAddr);
-            esp_now_send(targetMac, (uint8_t *)&reply, sizeof(reply));
-
-            DEBUG_PRINTF("[WEB] Устройство %s успешно одобрено пользователем.\n", macStr.c_str());
-            request->send(200, "text/plain", "Устройство добавлено");
-        } else {
-            request->send(400, "text/plain", "Неверный запрос (нет параметра mac)");
-        }
-    });
-
-    server.on("/delete", HTTP_GET, [](AsyncWebServerRequest *request) {
-        if (request->hasParam("mac")) {
-            String macStr = request->getParam("mac")->value();
-            uint8_t targetMac[6];
-            parseMacAddress(macStr.c_str(), targetMac);
-
-            // 1. Удаляем из пиров ESP-NOW
-            deletePeer(targetMac); 
-
-            // 2. Удаляем из памяти NVS
-            if (deleteDevice(targetMac)) {
-                DEBUG_PRINTF("[WEB] Устройство %s успешно удалено.\n", macStr.c_str());
-                request->send(200, "text/plain", "Устройство удалено");
-            } else {
-                request->send(404, "text/plain", "Устройство не найдено в памяти");
-            }
-        } else {
-            request->send(400, "text/plain", "Ошибка: нет параметра mac");
-        }
-    });
-
-    server.on("/devices", HTTP_GET, [](AsyncWebServerRequest *request) {
-        JsonDocument doc;
-        JsonArray arr = doc.to<JsonArray>();
-        
-        for (size_t i = 0; i < deviceCount; i++) {
-            char macStr[18];
-            snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-                     pairedDevices[i][0], pairedDevices[i][1], pairedDevices[i][2],
-                     pairedDevices[i][3], pairedDevices[i][4], pairedDevices[i][5]);
-            arr.add(macStr);
-        }
-        
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-    });
-
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-    {
-        if (LittleFS.exists("/index.html")) {
-            request->send(LittleFS, "/index.html", "text/html");
-        } else {
-            request->send(404, "text/plain", "Файл /index.html НЕ НАЙДЕН в LittleFS.");
-        } 
-    });
-
-    server.begin();
-    DEBUG_PRINTLN("HTTP веб-сервер успешно запущен.");
+    initESP_NOW();     // Инициализируем сеть
+    initWebServer();   // Запускаем веб-сервер одной строчкой!
 }
 
 void loop()

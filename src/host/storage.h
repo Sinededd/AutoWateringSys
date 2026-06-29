@@ -5,12 +5,16 @@
 #define MAX_DEVICES 20 
 
 
-extern uint8_t pairedDevices[MAX_DEVICES][6];
-extern size_t deviceCount;
+struct PairedDevice {
+    uint8_t mac[6];
+    char name[32]; // 31 символ + нуль-терминатор
+};
 
+extern PairedDevice pairedDevices[MAX_DEVICES];
+extern size_t deviceCount;
 
 void loadDevicesFromStorage();
 void saveDevicesToStorage();
 bool addDevice(const uint8_t *newMac);
 bool deleteDevice(const uint8_t *mac);
-void printMac(const uint8_t *mac);
+bool renameDevice(const uint8_t *mac, const char *newName);

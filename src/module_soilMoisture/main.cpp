@@ -284,7 +284,7 @@ void setup() {
 
     btn.begin(BUTTON_PIN);
     btn.setLongClickTime(5000);
-    btn.setTapHandler(handleButtonTap); // Вернул обработчик клика, раз функция была в коде
+    btn.setTapHandler(handleButtonTap);
     btn.setLongClickDetectedHandler(handleLongPressDetected);
 
     WiFi.mode(WIFI_STA);
