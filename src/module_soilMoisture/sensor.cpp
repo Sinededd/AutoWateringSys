@@ -1,5 +1,6 @@
 #include "sensor.h"
 #include "config.h"
+#include "settings.h"
 #include <Arduino.h>
 
 float readSoilMoisture() {
@@ -14,7 +15,7 @@ float readSoilMoisture() {
     digitalWrite(SENSOR_POWER_PIN, LOW);
     DEBUG_PRINTF("[SENSOR] Напряжение на пине: %d мВ\n", analogMilliVolts);
 
-    int moisturePercent = map(analogMilliVolts, AIR_VALUE, WATER_VALUE, 0, 100);
+    int moisturePercent = map(analogMilliVolts, r_airValue, r_waterValue, 0, 100);
     moisturePercent = constrain(moisturePercent, 0, 100);
     return (float)moisturePercent;
 }

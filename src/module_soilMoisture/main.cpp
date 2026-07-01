@@ -4,6 +4,7 @@
 #include "types.h"
 #include "sensor.h"
 #include "network.h"
+#include "settings.h"
 
 // Глобальные объекты и переменные времени выполнения (обнуляются при пробуждении)
 Button2 btn;
@@ -68,9 +69,13 @@ void handleLongPressDetected(Button2 &b) {
 }
 
 void setup() {
+    initAndLoadSettings();
+
 #ifdef DEBUG_ENABLE
     Serial.begin(115200);
     delay(50);
+    Serial.printf("[SYSTEM] Настройки загружены. Сон: %d сек. Калибровка: Аир=%d, Ватер=%d\n", 
+                  r_timeToSleepSec, r_airValue, r_waterValue);
 #endif
 
     // Настройка базовой периферии
@@ -106,8 +111,8 @@ void setup() {
     initWiFiAndEspNow();
 
     // Конфигурация источников пробуждения из Deep Sleep
-    esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP_SEC * 1000000ULL);
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << BUTTON_PIN, (esp_deepsleep_gpio_wake_up_mode_t)0);
+    esp_sleep_enable_timer_wakeup(r_timeToSleepSec * 1000000ULL);
+    esp_deep_sleep_enable_gpio_wakeup(1ULL << BUTTON_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
 }
 
 void loop() {

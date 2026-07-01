@@ -4,6 +4,7 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <Preferences.h>
+#include "settings.h"
 
 // Определение (выделение памяти) для RTC-переменных
 RTC_DATA_ATTR PairingStatus pairingStatus = NOT_PAIRED;
@@ -86,7 +87,7 @@ static void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *inco
 void initWiFiAndEspNow() {
     WiFi.mode(WIFI_STA);
     loadMacAddress();
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    WiFi.setTxPower((wifi_power_t)r_wifiTxPower);
 
     if (esp_now_init() != ESP_OK) {
         Serial.println("Ошибка инициализации ESP-NOW");

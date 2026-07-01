@@ -3,9 +3,9 @@
 #include "types.h"
 
 // Экспортируем глобальные RTC и системные переменные, чтобы main.cpp их видел
-extern RTC_DATA_ATTR PairingStatus pairingStatus;
-extern RTC_DATA_ATTR uint8_t hostMac[6];
-extern RTC_DATA_ATTR unsigned int globalReadingId;
+extern PairingStatus pairingStatus;
+extern uint8_t hostMac[6];
+extern unsigned int globalReadingId;
 extern volatile bool txDone;
 extern bool updateMAC;
 
