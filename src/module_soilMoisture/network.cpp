@@ -10,6 +10,7 @@
 RTC_DATA_ATTR PairingStatus pairingStatus = NOT_PAIRED;
 RTC_DATA_ATTR uint8_t hostMac[6] = {0};
 RTC_DATA_ATTR unsigned int globalReadingId = 0;
+RTC_DATA_ATTR float lastSentMoisture = -100.0f;
 
 // Системные переменные сети
 volatile bool txDone = false;
@@ -50,6 +51,9 @@ static void loadMacAddress() {
 static void OnDataSent(const wifi_tx_info_t *mac_addr, esp_now_send_status_t status) {
     Serial.print("Status доставки пакета: ");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Успешно" : "Ошибка");
+    if(status == ESP_NOW_SEND_SUCCESS) {
+        lastSentMoisture = myData.hum;
+    }
     txDone = true; 
 }
 
@@ -147,7 +151,8 @@ void resetNetworkSettings() {
     }
 
     pairingStatus = NOT_PAIRED; 
-    memset(hostMac, 0, 6);      
+    memset(hostMac, 0, 6);   
+    lastSentMoisture = -100.0f;   
 
     uint8_t randomMac[6];
     randomSeed(analogRead(0) + esp_random());

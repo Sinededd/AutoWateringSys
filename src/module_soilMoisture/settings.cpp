@@ -7,6 +7,10 @@ int r_airValue;
 int r_waterValue;
 uint32_t r_timeToSleepSec;
 int r_wifiTxPower;
+int r_moistureThreshold;
+int r_maxSkippedBoots;
+
+RTC_DATA_ATTR int skippedBootsCounter = 0;
 
 // Вспомогательные функции валидации (видны только в этом файле)
 static bool isValidCalibration(int air, int water) {
@@ -32,6 +36,15 @@ static bool isValidWifiPower(int powerLevel) {
     return (powerLevel >= -4 && powerLevel <= 84);
 }
 
+static bool isValidMoistureThreshold(int threshold) {
+    // Порог не может быть отрицательным или слишком огромным (ограничим от 0% до 20%)
+    return (threshold >= 0 && threshold <= 20);
+}
+
+static bool isValidMaxSkippedBoots(int count) {
+    return (count >= 0 && count <= 100);
+}
+
 
 void initAndLoadSettings() {
     Preferences prefs;
@@ -42,6 +55,8 @@ void initAndLoadSettings() {
     int loadedWater     = prefs.getInt("water_val", DEFAULT_WATER_VALUE);
     uint32_t loadedSleep= prefs.getUInt("sleep_sec", DEFAULT_TIME_TO_SLEEP_SEC);
     int loadedWifiPwr   = prefs.getInt("wifi_pwr", DEFAULT_WIFI_POWER);
+    int loadedThreshold = prefs.getInt("moi_thresh", DEFAULT_MOISTURE_THRESHOLD);
+    int loadedMaxSkipped = prefs.getInt("max_skip", DEFAULT_MAX_SKIPPED_BOOTS);
 
     prefs.end();
 
@@ -67,6 +82,18 @@ void initAndLoadSettings() {
         r_wifiTxPower = loadedWifiPwr;
     } else {
         r_wifiTxPower = DEFAULT_WIFI_POWER;
+    }
+
+    if (isValidMoistureThreshold(loadedThreshold)) {
+        r_moistureThreshold = loadedThreshold;
+    } else {
+        r_moistureThreshold = DEFAULT_MOISTURE_THRESHOLD;
+    }
+
+    if (isValidMaxSkippedBoots(loadedMaxSkipped)) {
+        r_maxSkippedBoots = loadedMaxSkipped;
+    } else {
+        r_maxSkippedBoots = DEFAULT_MAX_SKIPPED_BOOTS;
     }
 }
 
@@ -120,5 +147,27 @@ bool saveWifiPower(int powerLevel) {
     prefs.end();
     
     r_wifiTxPower = powerLevel;
+    return true;
+}
+
+bool saveMoistureThreshold(int threshold) {
+    if (!isValidMoistureThreshold(threshold)) return false;
+    Preferences prefs;
+    prefs.begin("sys_settings", false);
+    prefs.putInt("moi_thresh", threshold);
+    prefs.end();
+    r_moistureThreshold = threshold;
+    return true;
+}
+
+bool saveMaxSkippedBoots(int count) {
+    if (!isValidMaxSkippedBoots(count)) return false;
+    
+    Preferences prefs;
+    prefs.begin("sys_settings", false);
+    prefs.putInt("max_skip", count);
+    prefs.end();
+    
+    r_maxSkippedBoots = count; // Обновляем переменную в оперативной памяти
     return true;
 }

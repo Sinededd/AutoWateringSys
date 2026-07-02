@@ -8,6 +8,7 @@ extern uint8_t hostMac[6];
 extern unsigned int globalReadingId;
 extern volatile bool txDone;
 extern bool updateMAC;
+extern float lastSentMoisture;
 
 // Интерфейсные функции для работы с сетью
 void initWiFiAndEspNow();
