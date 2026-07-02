@@ -1,6 +1,6 @@
 #pragma once
 
-#include "types.h"
+#include "../common/types.h"
 
 // Экспортируем глобальные RTC и системные переменные, чтобы main.cpp их видел
 extern PairingStatus pairingStatus;
@@ -15,3 +15,4 @@ void initWiFiAndEspNow();
 void sendPairingRequest();
 void sendSensorData(float hum);
 void resetNetworkSettings();
+void sendSettingsReport();

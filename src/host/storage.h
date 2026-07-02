@@ -7,7 +7,15 @@
 
 struct PairedDevice {
     uint8_t mac[6];
-    char name[32]; // 31 символ + нуль-терминатор
+    char name[32]; // 31 символ + нуль-терминатор 
+    
+    // Добавленные поля настроек датчика
+    int airValue;
+    int waterValue;
+    uint32_t timeToSleepSec;
+    int wifiTxPower;
+    int moistureThreshold;
+    int maxSkippedBoots;
 };
 
 extern PairedDevice pairedDevices[MAX_DEVICES];

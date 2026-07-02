@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Button2.h>
 #include "config.h"
-#include "types.h"
+#include "../common/types.h"
 #include "sensor.h"
 #include "network.h"
 #include "settings.h"

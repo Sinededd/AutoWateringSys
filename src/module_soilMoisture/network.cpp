@@ -47,6 +47,21 @@ static void loadMacAddress() {
     }
 }
 
+void sendSettingsReport() {
+    struct_settings txSettings;
+    txSettings.msgType = SETTINGS_REPORT;
+    WiFi.macAddress(txSettings.macAddr);
+    txSettings.airValue = r_airValue;
+    txSettings.waterValue = r_waterValue;
+    txSettings.timeToSleepSec = r_timeToSleepSec;
+    txSettings.wifiTxPower = r_wifiTxPower;
+    txSettings.moistureThreshold = r_moistureThreshold;
+    txSettings.maxSkippedBoots = r_maxSkippedBoots;
+
+    esp_now_send(hostMac, (uint8_t *)&txSettings, sizeof(txSettings));
+    Serial.println("[NET] Текущие настройки отправлены на Хост.");
+}
+
 // Коллбэк отправки данных
 static void OnDataSent(const wifi_tx_info_t *mac_addr, esp_now_send_status_t status) {
     Serial.print("Status доставки пакета: ");
@@ -59,31 +74,65 @@ static void OnDataSent(const wifi_tx_info_t *mac_addr, esp_now_send_status_t sta
 
 // Коллбэк приема данных (сопряжение)
 static void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len) {
-    if (len == 0 || incomingData[0] != PAIRING) return;
+    if (len == 0) return;
+    uint8_t type = incomingData[0];
 
-    memcpy(&pairingData, incomingData, sizeof(pairingData));
-    if (pairingData.isReply != 1) return;
+    if (type == PAIRING) {
+        memcpy(&pairingData, incomingData, sizeof(pairingData));
+        if (pairingData.isReply != 1) return;
 
-    DEBUG_PRINTLN("Сопряжение успешно! MAC-адрес Хоста: ");
-    for (int i = 0; i < 6; i++) {
-        hostMac[i] = pairingData.macAddr[i];
-        DEBUG_PRINTF("%02X:", hostMac[i]);
-    }
-    DEBUG_PRINTLN();
+        DEBUG_PRINTLN("Сопряжение успешно! MAC-адрес Хоста: ");
+        for (int i = 0; i < 6; i++) {
+            hostMac[i] = pairingData.macAddr[i];
+            DEBUG_PRINTF("%02X:", hostMac[i]);
+        }
+        DEBUG_PRINTLN();
 
-    esp_now_peer_info_t peerInfo;
-    memset(&peerInfo, 0, sizeof(peerInfo));
-    memcpy(peerInfo.peer_addr, hostMac, 6);
-    peerInfo.channel = 0;
-    peerInfo.encrypt = false;
+        esp_now_peer_info_t peerInfo;
+        memset(&peerInfo, 0, sizeof(peerInfo));
+        memcpy(peerInfo.peer_addr, hostMac, 6);
+        peerInfo.channel = 0;
+        peerInfo.encrypt = false;
 
-    if (esp_now_is_peer_exist(hostMac)) {
-        esp_now_del_peer(hostMac);
-    }
+        if (esp_now_is_peer_exist(hostMac)) {
+            esp_now_del_peer(hostMac);
+        }
 
-    if (esp_now_add_peer(&peerInfo) == ESP_OK) {
-        Serial.println("Хост успешно добавлен в список пиров.");
-        pairingStatus = PAIRED;
+        if (esp_now_add_peer(&peerInfo) == ESP_OK) {
+            Serial.println("Хост успешно добавлен в список пиров.");
+            pairingStatus = PAIRED;
+            
+            // ИСПРАВЛЕНИЕ: Датчик успешно подключился — сразу шлем ему свои настройки!
+            sendSettingsReport(); 
+        }
+    } 
+    else if (type == SETTINGS_UPDATE) {
+        struct_settings rxSettings;
+        memcpy(&rxSettings, incomingData, sizeof(rxSettings));
+
+        struct_settings_status statusPacket;
+        statusPacket.msgType = SETTINGS_STATUS;
+        WiFi.macAddress(statusPacket.macAddr);
+        statusPacket.success = 1;
+        statusPacket.errorCode = 0;
+
+        // Поочередно проверяем и сохраняем через твои функции валидации из settings.h
+        if (!saveCalibrationSettings(rxSettings.airValue, rxSettings.waterValue)) {
+            statusPacket.success = 0; statusPacket.errorCode = 1;
+        } else if (!saveSleepInterval(rxSettings.timeToSleepSec)) {
+            statusPacket.success = 0; statusPacket.errorCode = 2;
+        } else if (!saveWifiPower(rxSettings.wifiTxPower)) {
+            statusPacket.success = 0; statusPacket.errorCode = 3;
+        } else if (!saveMoistureThreshold(rxSettings.moistureThreshold)) {
+            statusPacket.success = 0; statusPacket.errorCode = 4;
+        } else if (!saveMaxSkippedBoots(rxSettings.maxSkippedBoots)) {
+            statusPacket.success = 0; statusPacket.errorCode = 5;
+        }
+
+        // Отправляем ответ на хост
+        esp_now_send(hostMac, (uint8_t *)&statusPacket, sizeof(statusPacket));
+        Serial.printf("[NET] Настройки обработаны. Статус: %s, Код ошибки: %d\n", 
+                      statusPacket.success ? "УСПЕХ" : "ОШИБКА", statusPacket.errorCode);
     }
 }
 
