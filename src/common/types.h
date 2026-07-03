@@ -7,7 +7,8 @@ enum MessageType {
     DATA, 
     SETTINGS_REPORT,  // Датчик -> Хост (текущие настройки датчика)
     SETTINGS_UPDATE,  // Хост -> Датчик (новые настройки с сервера)
-    SETTINGS_STATUS   // Датчик -> Хост (результат применения: Ок / Ошибка)
+    SETTINGS_STATUS,   // Датчик -> Хост (результат применения: Ок / Ошибка)
+    CALIB              // Калибровка датчика
 };
 enum PairingStatus { NOT_PAIRED, PAIRING_REQUESTED, PAIRED };
 
@@ -43,3 +44,12 @@ typedef struct struct_settings_status {
     uint8_t success;   // 1 - Успешно, 0 - Ошибка
     uint8_t errorCode; // 0 - Нет, 1 - Калибровка, 2 - Время сна, 3 - WiFi, 4 - Порог, 5 - Пульс
 } struct_settings_status;
+
+enum calib_mode { START, STOP};
+
+typedef struct struct_calib {
+    uint8_t msgType; // CALIB
+    uint8_t macAddr[6];
+    uint8_t mode;       // calib_mode
+    int volts;
+} struct_calib;

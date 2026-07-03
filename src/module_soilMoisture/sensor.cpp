@@ -19,3 +19,25 @@ float readSoilMoisture() {
     moisturePercent = constrain(moisturePercent, 0, 100);
     return (float)moisturePercent;
 }
+
+
+bool enableSoilMoisture = false;
+// Start soil moisture sensor and return value
+// This method always keep sensor up, to close it call stopSoilMoisture function
+int startSoilMoisture() {
+    if(!enableSoilMoisture) {
+        digitalWrite(SENSOR_POWER_PIN, HIGH);
+        enableSoilMoisture = true;
+    delay(350); 
+    }
+
+    return analogReadMilliVolts(SENSOR_ANALOG_PIN);
+}
+
+// Stop working soil moisture sensor
+void stopSoilMoisture() {
+    if(enableSoilMoisture) {
+        digitalWrite(SENSOR_POWER_PIN, LOW);
+        enableSoilMoisture = false;
+    }
+}

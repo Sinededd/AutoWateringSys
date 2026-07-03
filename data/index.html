@@ -86,8 +86,14 @@
             font-weight: bold;
         }
 
-        .btn-connect:hover { background-color: #0056b3; }
-        .btn-connect:disabled { background-color: #6c757d; cursor: not-allowed; }
+        .btn-connect:hover {
+            background-color: #0056b3;
+        }
+
+        .btn-connect:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
 
         .sensor-data {
             display: flex;
@@ -111,36 +117,58 @@
         .modal-overlay {
             display: none;
             position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.4);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
             justify-content: center;
             align-items: center;
             z-index: 1000;
         }
+
         .modal-content {
             background: white;
             padding: 25px;
             border-radius: 12px;
             width: 85%;
             max-width: 400px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
             text-align: left;
             position: relative;
         }
-        .modal-content h3 { margin-top: 0; color: #333; margin-bottom: 5px; }
-        .modal-content label { font-size: 0.8rem; color: #555; display: block; margin-bottom: 4px; font-weight: bold;}
+
+        .modal-content h3 {
+            margin-top: 0;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .modal-content label {
+            font-size: 0.8rem;
+            color: #555;
+            display: block;
+            margin-bottom: 4px;
+            font-weight: bold;
+        }
+
         .modal-content input {
-            width: 100%; padding: 8px; border: 1px solid #ccc; 
-            border-radius: 6px; margin-bottom: 12px; box-sizing: border-box;
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            box-sizing: border-box;
             font-size: 0.9rem;
         }
-        
+
         /* Двухколоночный вывод настроек в модалке */
         .form-row {
             display: flex;
             gap: 12px;
         }
-        .form-row > div {
+
+        .form-row>div {
             flex: 1;
         }
 
@@ -155,17 +183,38 @@
             line-height: 1.3;
         }
 
-        .modal-actions { display: flex; justify-content: space-between; margin-top: 10px; }
+        .modal-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+        }
+
         .btn-delete {
-            background-color: #dc3545; color: white; border: none;
-            padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
         }
-        .btn-delete:hover { background-color: #bd2130; }
+
+        .btn-delete:hover {
+            background-color: #bd2130;
+        }
+
         .btn-close {
-            background-color: #6c757d; color: white; border: none;
-            padding: 8px 14px; border-radius: 6px; cursor: pointer;
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
         }
-        .btn-close:hover { background-color: #5a6268; }
+
+        .btn-close:hover {
+            background-color: #5a6268;
+        }
     </style>
 </head>
 
@@ -184,13 +233,14 @@
     <div id="settings-modal" class="modal-overlay" onclick="closeModal(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
             <h3>Настройки датчика</h3>
-            <p id="modal-mac" style="font-family: monospace; font-size:0.85rem; color:#666; margin-bottom:15px; margin-top: 0;"></p>
-            
+            <p id="modal-mac"
+                style="font-family: monospace; font-size:0.85rem; color:#666; margin-bottom:15px; margin-top: 0;"></p>
+
             <div id="settings-status-alert" class="status-alert"></div>
 
             <label for="sensor-name">Кастомное имя устройства:</label>
             <input type="text" id="sensor-name" placeholder="Например, Кухня">
-            
+
             <div class="form-row">
                 <div>
                     <label for="sensor-sleep">Период сна (сек):</label>
@@ -199,6 +249,30 @@
                 <div>
                     <label for="sensor-threshold">Порог отправки (Δ%):</label>
                     <input type="number" id="sensor-threshold" min="0" max="100">
+                </div>
+            </div>
+
+
+            <!-- БЛОК ИНТЕРАКТИВНОЙ КАЛИБРОВКИ СЕНСОРА -->
+            <div
+                style="margin-top: 5px; margin-bottom: 15px; padding: 12px; background: #f0f7ff; border: 1px dashed #007bff; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 0.85rem; font-weight: bold; color: #0056b3;">Интерактивный АЦП поток:</span>
+                    <button type="button" id="btn-toggle-calib" class="btn-connect"
+                        style="padding: 4px 10px; font-size: 0.8rem; background-color: #28a745;"
+                        onclick="toggleLiveCalibration()">Старт поток</button>
+                </div>
+                <div style="font-size: 0.9rem; margin-bottom: 10px; font-weight: bold;">
+                    Текущий уровень: <span id="calib-live-volts"
+                        style="font-family: monospace; color: #dc3545; font-size: 1.05rem;">---</span> мВ
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn-close"
+                        style="flex: 1; padding: 6px; font-size: 0.78rem; background-color: #4a5568; color: white;"
+                        onclick="fixCurrentCalib('air')">👇 Подставить Сухой</button>
+                    <button type="button" class="btn-close"
+                        style="flex: 1; padding: 6px; font-size: 0.78rem; background-color: #4a5568; color: white;"
+                        onclick="fixCurrentCalib('water')">👇 Подставить Воду</button>
                 </div>
             </div>
 
@@ -213,7 +287,15 @@
                 </div>
             </div>
 
-            <div class="form-row">
+            <!-- Кликабельная строчка для раскрытия -->
+            <div style="margin: 15px 0 5px 0; text-align: left;">
+                <span id="toggle-advanced"
+                    style="color: #4a5568; cursor: pointer; font-size: 0.85rem; font-weight: bold; border-bottom: 1px dashed #4a5568; user-select: none;"
+                    onclick="toggleAdvancedSettings()">▶ Специальные настройки</span>
+            </div>
+
+            <!-- Сам блок настроек (изначально скрыт) -->
+            <div id="advanced-settings" class="form-row" style="display: none; margin-top: 10px;">
                 <div>
                     <label for="sensor-wifi">Мощность WiFi (TX):</label>
                     <input type="number" id="sensor-wifi" min="8" max="84">
@@ -223,7 +305,7 @@
                     <input type="number" id="sensor-max-skip" min="1" max="50">
                 </div>
             </div>
-            
+
             <div class="modal-actions">
                 <button class="btn-delete" onclick="deleteSensorFromModal()">Удалить</button>
                 <div>
@@ -235,9 +317,13 @@
     </div>
 
     <script>
-        let selectedMac = ''; 
+        let selectedMac = '';
         // Глобальный кэш для хранения настроек всех датчиков
-        let deviceCache = {}; 
+        let deviceCache = {};
+
+        // Переменные для автоматического ведения потока калибровки
+        let calibIntervalId = null;
+        let currentLiveVolts = null;
 
         function getRSSIColor(rssi) {
             if (rssi >= -67) return '#28a745';
@@ -296,7 +382,7 @@
 
             document.getElementById('modal-mac').textContent = `MAC: ${mac}`;
             document.getElementById('sensor-name').value = dev.name === mac ? '' : (dev.name || '');
-            
+
             // Наполнение полей ввода конфигурации
             document.getElementById('sensor-sleep').value = dev.sleep || 600;
             document.getElementById('sensor-threshold').value = dev.threshold || 2;
@@ -310,19 +396,99 @@
             statusAlert.style.display = 'none';
             statusAlert.textContent = '';
 
+            // Сброс графического состояния интерактивной калибровки к исходному
+            resetCalibUIState();
+
+            document.getElementById('advanced-settings').style.display = 'none';
+            document.getElementById('toggle-advanced').textContent = '▶ Специальные настройки';
             document.getElementById('settings-modal').style.display = 'flex';
         }
 
         function closeModal(e) {
-            if(!e || e.target === document.getElementById('settings-modal') || e === null) {
+            if (!e || e.target === document.getElementById('settings-modal') || e === null) {
+                // Всегда тушим калибровочный поток на датчике при выходе из карточки сенсора
+                stopLiveCalibrationLoop();
                 document.getElementById('settings-modal').style.display = 'none';
             }
         }
 
+        // ======================================================================
+        // НОВЫЕ СИСТЕМНЫЕ ФУНКЦИИ ИНТЕРАКТИВНОЙ КАЛИБРОВКИ
+        // ======================================================================
+        function toggleLiveCalibration() {
+            if (!calibIntervalId) {
+                startLiveCalibrationLoop();
+            } else {
+                stopLiveCalibrationLoop();
+            }
+        }
+
+        function startLiveCalibrationLoop() {
+            if (calibIntervalId) return;
+
+            const statusAlert = document.getElementById('settings-status-alert');
+            statusAlert.style.display = 'block';
+            statusAlert.style.backgroundColor = '#ebf8ff';
+            statusAlert.style.color = '#2b6cb0';
+            statusAlert.textContent = 'Запрос на запуск калибровки отправлен. Разбудите датчик (кнопкой Boot)...';
+
+            const sendPing = () => {
+                fetch(`/calibration?mac=${selectedMac}&mode=0`) // mode=0 (START)
+                    .catch(err => console.error("Ошибка передачи команды калибровки:", err));
+            };
+
+            sendPing(); // Первая команда мгновенно
+            // Устанавливаем интервал в 4 секунды для удержания платы от засыпания
+            calibIntervalId = setInterval(sendPing, 4000);
+
+            const btn = document.getElementById('btn-toggle-calib');
+            btn.textContent = 'Стоп поток';
+            btn.style.backgroundColor = '#dc3545';
+            document.getElementById('calib-live-volts').textContent = '⏱ Ожидание...';
+            currentLiveVolts = null;
+        }
+
+        function stopLiveCalibrationLoop() {
+            if (calibIntervalId) {
+                clearInterval(calibIntervalId);
+                calibIntervalId = null;
+            }
+
+            fetch(`/calibration?mac=${selectedMac}&mode=1`) // mode=1 (STOP)
+                .catch(err => console.error("Ошибка остановки калибровки:", err));
+
+            resetCalibUIState();
+        }
+
+        function resetCalibUIState() {
+            const btn = document.getElementById('btn-toggle-calib');
+            if (btn) {
+                btn.textContent = 'Старт поток';
+                btn.style.backgroundColor = '#28a745';
+            }
+            const liveVolts = document.getElementById('calib-live-volts');
+            if (liveVolts) liveVolts.textContent = '---';
+            currentLiveVolts = null;
+        }
+
+        function fixCurrentCalib(type) {
+            if (currentLiveVolts === null) {
+                alert("Нет стабильных данных АЦП. Запустите поток и дождитесь показаний от устройства.");
+                return;
+            }
+            if (type === 'air') {
+                document.getElementById('sensor-air').value = currentLiveVolts;
+            } else if (type === 'water') {
+                document.getElementById('sensor-water').value = currentLiveVolts;
+            }
+        }
+        // ======================================================================
+
         // Сохранение имени И отправка обновленных радио-настроек на датчик
         function saveSensorSettings() {
+
             const newName = document.getElementById('sensor-name').value.trim() || selectedMac;
-            
+
             const air = document.getElementById('sensor-air').value;
             const water = document.getElementById('sensor-water').value;
             const sleep = document.getElementById('sensor-sleep').value;
@@ -339,28 +505,28 @@
             // Шаг 1: Переименовываем устройство в базе хоста
             fetch(`/rename?mac=${selectedMac}&name=${encodeURIComponent(newName)}`)
                 .then(res => {
-                    if(res.ok) {
+                    if (res.ok) {
                         if (!deviceCache[selectedMac]) deviceCache[selectedMac] = {};
                         deviceCache[selectedMac].name = newName;
 
                         const li = document.getElementById(selectedMac);
-                        if(li) {
+                        if (li) {
                             const nameSpan = li.querySelector('.device-display-name');
-                            if(nameSpan) nameSpan.textContent = newName;
+                            if (nameSpan) nameSpan.textContent = newName;
                         }
-                        
+
                         // Шаг 2: Отправляем новые настройки в эфир через ESP-NOW
                         statusAlert.style.backgroundColor = '#feebc8';
                         statusAlert.style.color = '#c05621';
                         statusAlert.textContent = 'Пакет отправлен в эфир. Ожидание подтверждения от датчика...';
 
                         return fetch(`/update_settings?mac=${selectedMac}&air=${air}&water=${water}&sleep=${sleep}&wifi=${wifi}&threshold=${threshold}&max_skip=${max_skip}`);
-                    } else { 
-                        throw new Error("Ошибка сохранения имени устройства."); 
+                    } else {
+                        throw new Error("Ошибка сохранения имени устройства.");
                     }
                 })
                 .then(res => {
-                    if(!res.ok) throw new Error("Ошибка отправки ESP-NOW пакета сервером.");
+                    if (!res.ok) throw new Error("Ошибка отправки ESP-NOW пакета сервером.");
                 })
                 .catch(err => {
                     statusAlert.style.backgroundColor = '#fed7d7';
@@ -371,13 +537,14 @@
 
         // Удаление датчика
         function deleteSensorFromModal() {
-            if(!confirm(`Вы точно хотите удалить датчик ${selectedMac}?`)) return;
+            if (!confirm(`Вы точно хотите удалить датчик ${selectedMac}?`)) return;
+            stopLiveCalibrationLoop();
 
             fetch(`/delete?mac=${selectedMac}`)
                 .then(res => {
-                    if(res.ok) {
+                    if (res.ok) {
                         const li = document.getElementById(selectedMac);
-                        if(li) li.remove();
+                        if (li) li.remove();
                         delete deviceCache[selectedMac]; // Вычищаем из кэша
                         document.getElementById('settings-modal').style.display = 'none';
                     } else { alert("Ошибка при удалении"); }
@@ -437,7 +604,7 @@
 
                 // Подтягиваем имя из нашего глобального кэша, если его нет — выводим MAC
                 let currentName = (deviceCache[data.mac] && deviceCache[data.mac].name) ? deviceCache[data.mac].name : data.mac;
-                
+
                 if (!deviceCache[data.mac]) {
                     deviceCache[data.mac] = { name: currentName };
                 }
@@ -449,9 +616,9 @@
                     connectedList.appendChild(li);
                 }
 
-                li.className = 'device-item'; 
+                li.className = 'device-item';
                 let rssiColor = getRSSIColor(data.rssi);
-                
+
                 li.innerHTML = `
                     <div style="font-family: monospace;">
                         <span class="device-display-name" style="font-weight: bold; font-family: Arial, sans-serif;">${currentName}</span><br>
@@ -464,10 +631,30 @@
                 `;
             }, false);
 
+            // НОВОЕ СОБЫТИЕ: Обработка живого стрима милливольт
+            source.addEventListener('calib_stream', function (e) {
+                const data = JSON.parse(e.data); // Выгружает mac и volts
+                if (selectedMac === data.mac) {
+                    currentLiveVolts = data.volts;
+                    const voltsSpan = document.getElementById('calib-live-volts');
+                    if (voltsSpan) {
+                        voltsSpan.textContent = data.volts;
+                    }
+
+                    // Обновляем текст в алерте, когда получили первый успешный пакет от датчика
+                    const statusAlert = document.getElementById('settings-status-alert');
+                    if (statusAlert && statusAlert.textContent.includes('Разбудите датчик')) {
+                        statusAlert.style.backgroundColor = '#c6f6d5';
+                        statusAlert.style.color = '#22543d';
+                        statusAlert.textContent = 'Связь установлена. Снимаем показания АЦП в реальном времени... 📡';
+                    }
+                }
+            }, false);
+
             // НОВОЕ СОБЫТИЕ: Датчик прислал отчет о своих внутренних настройках
             source.addEventListener('settings_report', function (e) {
                 const data = JSON.parse(e.data); // mac, air, water, sleep, wifi, threshold, max_skip
-                
+
                 if (!deviceCache[data.mac]) deviceCache[data.mac] = {};
                 // Обновляем параметры в локальной памяти (кэше)
                 Object.assign(deviceCache[data.mac], data);
@@ -480,7 +667,7 @@
                     document.getElementById('sensor-water').value = data.water;
                     document.getElementById('sensor-wifi').value = data.wifi;
                     document.getElementById('sensor-max-skip').value = data.max_skip;
-                    
+
                     const statusAlert = document.getElementById('settings-status-alert');
                     statusAlert.style.display = 'block';
                     statusAlert.style.backgroundColor = '#c6f6d5';
@@ -492,16 +679,16 @@
             // НОВОЕ СОБЫТИЕ: Датчик прислал статус выполнения (успех или код ошибки)
             source.addEventListener('settings_status', function (e) {
                 const data = JSON.parse(e.data); // mac, success, errorCode
-                
+
                 if (selectedMac === data.mac && document.getElementById('settings-modal').style.display === 'flex') {
                     const statusAlert = document.getElementById('settings-status-alert');
                     statusAlert.style.display = 'block';
-                    
+
                     if (data.success === 1) {
                         statusAlert.style.backgroundColor = '#c6f6d5';
                         statusAlert.style.color = '#22543d';
                         statusAlert.textContent = 'Настройки успешно приняты и применены датчиком! ✅';
-                        
+
                         // Так как датчик подтвердил запись, сохраняем эти значения в локальный кэш страницы
                         deviceCache[data.mac].air = parseInt(document.getElementById('sensor-air').value);
                         deviceCache[data.mac].water = parseInt(document.getElementById('sensor-water').value);
@@ -513,11 +700,11 @@
                         statusAlert.style.backgroundColor = '#fed7d7';
                         statusAlert.style.color = '#9b2c2c';
                         const errorMessages = [
-                            "Неизвестная ошибка", 
-                            "Датчик отклонил калибровку (Air/Water)", 
-                            "Недопустимый период сна", 
-                            "Недопустимая мощность передатчика WiFi", 
-                            "Недопустимый порог влажности", 
+                            "Неизвестная ошибка",
+                            "Датчик отклонил калибровку (Air/Water)",
+                            "Недопустимый период сна",
+                            "Недопустимая мощность передатчика WiFi",
+                            "Недопустимый порог влажности",
                             "Недопустимое число пропусков (пульс)"
                         ];
                         statusAlert.textContent = `❌ Датчик отклонил изменения! ${errorMessages[data.errorCode] || ''}`;
@@ -525,6 +712,27 @@
                 }
             }, false);
         }
+
+        // Гарантируем остановку калибровки при закрытии/перезагрузке страницы
+        window.addEventListener('beforeunload', function () {
+            if (calibIntervalId) {
+                stopLiveCalibrationLoop();
+            }
+        });
+
+        function toggleAdvancedSettings() {
+            const advBlock = document.getElementById('advanced-settings');
+            const toggleLink = document.getElementById('toggle-advanced');
+            
+            if (advBlock.style.display === 'none') {
+                advBlock.style.display = 'flex'; // Так как это form-row, используем flex
+                toggleLink.textContent = '▼ Скрыть специальные настройки';
+            } else {
+                advBlock.style.display = 'none';
+                toggleLink.textContent = '▶ Специальные настройки';
+            }
+        }
     </script>
 </body>
+
 </html>

@@ -20,6 +20,10 @@ static uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static struct_pairing pairingData;
 static struct_message myData;
 
+extern bool calibration;
+extern unsigned long lastCalibSignalTime;
+extern void stopSoilMoisture();
+
 // Внутренняя функция загрузки MAC (скрыта от main.cpp через static)
 static void loadMacAddress() {
     uint8_t macBuf[6];
@@ -78,6 +82,7 @@ static void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *inco
     uint8_t type = incomingData[0];
 
     if (type == PAIRING) {
+        if (len < sizeof(pairingData)) return; // ЗАЩИТА
         memcpy(&pairingData, incomingData, sizeof(pairingData));
         if (pairingData.isReply != 1) return;
 
@@ -101,22 +106,59 @@ static void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *inco
         if (esp_now_add_peer(&peerInfo) == ESP_OK) {
             Serial.println("Хост успешно добавлен в список пиров.");
             pairingStatus = PAIRED;
-            
-            // ИСПРАВЛЕНИЕ: Датчик успешно подключился — сразу шлем ему свои настройки!
             sendSettingsReport(); 
         }
     } 
+    else if (type == CALIB) {
+        if (len < sizeof(struct_calib)) return; // ЗАЩИТА
+        
+        struct_calib rxCalib;
+        memcpy(&rxCalib, incomingData, sizeof(rxCalib));
+
+        // УБРАЛИ тупиковую проверку "if (!calibration)" и валидацию вольт
+        if (rxCalib.mode == START) 
+        {
+            calibration = true;
+            lastCalibSignalTime = millis(); // Продлеваем/сбрасываем таймаут
+            Serial.println("[ESP-NOW] Получена команда СТАРТ калибровки.");
+        } 
+        else if (rxCalib.mode == STOP) 
+        {
+            calibration = false;
+            stopSoilMoisture(); // Выключаем питание сенсора
+            Serial.println("[ESP-NOW] Получена команда СТОП калибровки.");
+        }
+    }
     else if (type == SETTINGS_UPDATE) {
+        Serial.println("Новые настройки");
+        // 1. ЗАЩИТА: Проверяем, что пакет долетел полностью и не побит
+        if (len < sizeof(struct_settings)) {
+            Serial.println("[NET] Ошибка: Получен неполный пакет настроек. Отмена.");
+            return;
+        }
+
+        // 2. РАДИОТИШИНА: Мгновенно отключаем флаг калибровки и гасим датчик.
+        // Это самое важное! Как только мы сбросим флаг 'calibration', 
+        // функция loop() ТУТ ЖЕ перестанет вызывать esp_now_send каждые 350 мс.
+        // Эфир очищается, и мы сможем без коллизий отправить хосту ответный статус.
+        if (calibration) {
+            calibration = false;
+            stopSoilMoisture();
+            Serial.println("[NET] Режим калибровки остановлен для записи настроек.");
+        }
+
+        // 3. Копируем прилетевшие настройки
         struct_settings rxSettings;
         memcpy(&rxSettings, incomingData, sizeof(rxSettings));
 
+        // 4. Готовим пакет ответа для веб-интерфейса хоста
         struct_settings_status statusPacket;
         statusPacket.msgType = SETTINGS_STATUS;
         WiFi.macAddress(statusPacket.macAddr);
         statusPacket.success = 1;
         statusPacket.errorCode = 0;
 
-        // Поочередно проверяем и сохраняем через твои функции валидации из settings.h
+        // 5. Валидируем и записываем данные в Preferences (NVS флеш датчика)
         if (!saveCalibrationSettings(rxSettings.airValue, rxSettings.waterValue)) {
             statusPacket.success = 0; statusPacket.errorCode = 1;
         } else if (!saveSleepInterval(rxSettings.timeToSleepSec)) {
@@ -129,10 +171,16 @@ static void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *inco
             statusPacket.success = 0; statusPacket.errorCode = 5;
         }
 
-        // Отправляем ответ на хост
+        // 6. Отправляем отчет о проделанной работе обратно на Хост.
+        // Теперь пакет долетит со 100% вероятностью, так как датчик сам больше ничего не шлет.
         esp_now_send(hostMac, (uint8_t *)&statusPacket, sizeof(statusPacket));
-        Serial.printf("[NET] Настройки обработаны. Статус: %s, Код ошибки: %d\n", 
+        
+        Serial.printf("[NET] Настройки успешно применены. Статус: %s (Код: %d)\n", 
                       statusPacket.success ? "УСПЕХ" : "ОШИБКА", statusPacket.errorCode);
+        
+        // (Опционально) Если датчик был разбужен кнопкой принудительно, 
+        // после сохранения настроек можно скомандовать ему сразу спать, взведя флаг txDone.
+        // txDone = true; 
     }
 }
 

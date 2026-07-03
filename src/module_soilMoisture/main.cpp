@@ -5,6 +5,7 @@
 #include "sensor.h"
 #include "network.h"
 #include "settings.h"
+#include <esp_now.h>
 
 // Глобальные объекты и переменные времени выполнения (обнуляются при пробуждении)
 Button2 btn;
@@ -16,6 +17,12 @@ bool ledState = true;
 bool currentState = true;
 bool dataSentThisBoot = false;
 bool forcedAwake = false;
+bool calibration = false;
+bool isWifiInit = false;
+
+unsigned long lastCalibSignalTime = 0; // Время последнего пинга/команды от хоста
+unsigned long lastCalibDataSent = 0;   // Время последней отправки вольт на хост
+const unsigned long CALIB_TIMEOUT_MS = 60000; // 25 секунд без команд с сайта — и датчик уснет
 
 // Индикация состояний светодиодом
 void updateLedIndicator()
@@ -144,15 +151,12 @@ void loop()
         if (currentMillis - lastTransmission >= PAIRING_INTERVAL)
         {
             lastTransmission = currentMillis;
-
-            // ИСПРАВЛЕНИЕ 1: Инициализируем Wi-Fi один раз перед отправкой запроса сопряжения
             static bool wifiInitedForPairing = false;
             if (!wifiInitedForPairing)
             {
                 initWiFiAndEspNow();
                 wifiInitedForPairing = true;
             }
-
             sendPairingRequest();
         }
         return;
@@ -171,50 +175,81 @@ void loop()
     // Режим Б: Плата сопряжена (PAIRED)
     if (pairingStatus == PAIRED)
     {
+        // ======================================================================
+        // МОДИФИКАЦИЯ: АКТИВНЫЙ РЕЖИМ КАЛИБРОВКИ С САЙТА
+        // ======================================================================
+        if (calibration) 
+        {
+            // 1. Проверка таймаута
+            if (currentMillis - lastCalibSignalTime > CALIB_TIMEOUT_MS) 
+            {
+                Serial.println("[CALIB] Время ожидания команд истекло. Аварийное усыпление.");
+                calibration = false;
+                stopSoilMoisture();
+                
+                // БЕЗОПАСНОСТЬ: Сразу засыпаем, не выполняя код ниже
+                gpio_hold_en((gpio_num_t)BUTTON_PIN);
+                esp_deep_sleep_start();
+            }
+            else 
+            {
+                // 2. Инициализируем Wi-Fi, если этого еще не сделали
+                if (!isWifiInit) {
+                    initWiFiAndEspNow();
+                    isWifiInit = true;
+                }
 
-        // Отправляем данные один раз за это пробуждение
+                // 3. Отправляем сырые вольты на хост каждые 1000 мс
+                if (currentMillis - lastCalibDataSent >= 2000) 
+                {
+                    lastCalibDataSent = currentMillis;
+                    
+                    struct_calib txCalib;
+                    memset(&txCalib, 0, sizeof(txCalib)); // Очищаем буфер перед отправкой
+                    
+                    txCalib.msgType = CALIB;
+                    WiFi.macAddress(txCalib.macAddr); 
+                    txCalib.mode = START;
+                    txCalib.volts = startSoilMoisture(); // Читаем текущие мВ
+                    
+                    esp_now_send(hostMac, (uint8_t *)&txCalib, sizeof(txCalib)); 
+                }
+
+                return; // Блокируем дальнейший loop, удерживая плату активной
+            }
+        }
+        // ======================================================================
+
+        // Отправляем данные один раз за это пробуждение (стандартный режим работы)
         if (!dataSentThisBoot)
         {
-            float moisture = readSoilMoisture(); // Считываем датчик
+            float moisture = readSoilMoisture(); 
             float diff = std::fabs(moisture - lastSentMoisture);
 
-            // ИЗМЕНЕННОЕ УСЛОВИЕ: порог ИЛИ превышение лимита пропущенных циклов
             if (forcedAwake || lastSentMoisture < 0 || diff >= r_moistureThreshold || skippedBootsCounter >= r_maxSkippedBoots)
             {
-
 #ifdef DEBUG_ENABLE
-                if (skippedBootsCounter >= r_maxSkippedBoots)
-                {
+                if (skippedBootsCounter >= r_maxSkippedBoots) {
                     Serial.printf("[SYS] Данные стабильны, но сработал пульс Heartbeat (%d циклов пропущено). Отправка...\n", skippedBootsCounter);
-                }
-                else
-                {
+                } else {
                     Serial.printf("[SYS] Изменение существенно (Было: %.1f%%, Стало: %.1f%%). Отправка...\n", lastSentMoisture, moisture);
                 }
 #endif
-
-                // Только теперь включаем Wi-Fi
                 initWiFiAndEspNow();
                 sendSensorData(moisture);
-
-                // ОБЯЗАТЕЛЬНО СБРАСЫВАЕМ счетчик, так как отправка состоялась
                 skippedBootsCounter = 0;
             }
             else
             {
-                // Если данные НЕ изменились и время "пульса" еще НЕ пришло:
-                skippedBootsCounter++; // Увеличиваем счетчик пропущенных шагов в RTC памяти
-
+                skippedBootsCounter++; 
                 Serial.printf("[SYS] Пропуск отправки (%d/%d). Изменение незначительно (Было: %.1f%%, Стало: %.1f%%)\n",
                               skippedBootsCounter, r_maxSkippedBoots, lastSentMoisture, moisture);
-
-                // Имитируем успешное завершение отправки, чтобы сработал уход в сон ниже
                 txDone = true;
             }
             dataSentThisBoot = true;
         }
 
-        // Ограничиваем сессию бодрствования (твой старый рабочий код сна)
+        // Ограничиваем сессию бодрствования
         if (!forcedAwake)
         {
             if (txDone || currentMillis > 1500)
@@ -227,6 +262,8 @@ void loop()
         }
         else
         {
+            // Сюда мы попадаем, если проснулись от КНОПКИ.
+            // Если в течение 10 секунд пользователь НЕ нажал "Калибровка" на сайте, плата засыпает.
             if (currentMillis > 10000)
             {
                 Serial.println("[SLEEP] Время ожидания интерфейса вышло. Уходим в глубокий сон...");

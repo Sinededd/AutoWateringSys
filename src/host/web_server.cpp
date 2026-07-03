@@ -114,7 +114,7 @@ void initWebServer()
     request->send(200, "application/json", response); });
 
     server.on("/update_settings", HTTP_GET, [](AsyncWebServerRequest *request)
-{
+              {
     if (request->hasParam("mac")) {
         String macStr = request->getParam("mac")->value();
         uint8_t targetMac[6];
@@ -142,8 +142,42 @@ void initWebServer()
         }
     } else {
         request->send(400, "text/plain", "Bad Request: Missing MAC");
-    }
-});
+    } });
+
+    server.on("/calibration", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+        if (request->hasParam("mac"))
+        {
+            String macStr = request->getParam("mac")->value();
+            uint8_t targetMac[6];
+            parseMacAddress(macStr.c_str(), targetMac);
+
+            struct_calib calibration;
+            calibration.msgType = CALIB;
+            memcpy(calibration.macAddr, targetMac, 6);
+
+            // Parse parameters fom GET of URL request
+            // 0 - START, 1 - STOP
+            calibration.mode = request->hasParam("mode") ? request->getParam("mode")->value().toInt() : calib_mode::STOP;
+
+            Serial.printf("[CALIB] Отправлен запрос %s датчику %s\n", 
+                          calibration.mode == START ? "START" : "STOP", macStr.c_str());
+
+            esp_err_t result = esp_now_send(targetMac, (uint8_t *)&calibration, sizeof(calibration));
+
+            if (result == ESP_OK)
+            {
+                request->send(200, "text/plain", "Переключение режима на калибровку. Ожидание ответа от датчика...");
+            }
+            else
+            {
+                request->send(500, "text/plain", "Ошибка отправки ESP-NOW");
+            }
+        }
+        else
+        {
+            request->send(400, "text/plain", "Bad Request: Missing MAC");
+        } });
 
     server.begin();
     Serial.println("[Web] HTTP веб-сервер успешно запущен.");

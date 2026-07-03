@@ -260,6 +260,34 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
         DEBUG_PRINTLN("[ESP-NOW] Получен статус применения настроек от удаленного датчика.");
         break;
     }
+
+    case CALIB:
+    {
+        struct_calib rxCalib;
+        memcpy(&rxCalib, incomingData, sizeof(rxCalib));
+
+        char macStr[18];
+        snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+                 rxCalib.macAddr[0], rxCalib.macAddr[1], rxCalib.macAddr[2],
+                 rxCalib.macAddr[3], rxCalib.macAddr[4], rxCalib.macAddr[5]);
+
+        // Валидация входящего значения мВ
+        if (rxCalib.volts < 0 || rxCalib.volts > 4095) {
+            DEBUG_PRINTF("[CALIB] ОШИБКА: Некорректное значение мВ от датчика: %d\n", rxCalib.volts);
+            break;
+        }
+
+        JsonDocument doc;
+        doc["mac"] = macStr;
+        doc["volts"] = rxCalib.volts; // Сырые милливольты от датчика
+
+        String payload;
+        serializeJson(doc, payload);
+        
+        // Отправляем событие в браузер на страницу калибровки
+        events.send(payload.c_str(), "calib_stream", millis());
+        break;
+    }
     }
 }
 
