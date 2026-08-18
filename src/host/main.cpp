@@ -20,6 +20,8 @@
 #include "web_server.h"
 #include "../common/types.h"
 #include "Logger.h"
+#include "Config.h"
+#include <Led.h>
 
 // PIN Settings
 const uint8_t LED_PIN = 2;
@@ -422,34 +424,42 @@ void initESP_NOW()
 
 static const char* TAG = "Main";
 
+Led led(Config::Pins::LED_PIN, false);
+
 void setup()
 {
     Logger::begin();
     LOG_I(TAG, "Start...");
 
-    if (!LittleFS.begin(true))
-    {
-        LOG_E(TAG, "Ошибка LittleFS!");
-        return;
-    }
+    led.begin();
+
+    // if (!LittleFS.begin(true))
+    // {
+    //     LOG_E(TAG, "Ошибка LittleFS!");
+    //     return;
+    // }
 
 
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);
+    // pinMode(LED_PIN, OUTPUT);
+    // digitalWrite(LED_PIN, LOW);
 
-    pinMode(VALVE_PIN, OUTPUT);
-    digitalWrite(VALVE_PIN, LOW);
+    // pinMode(VALVE_PIN, OUTPUT);
+    // digitalWrite(VALVE_PIN, LOW);
 
-    loadWateringSettingsFromStorage();
+    // loadWateringSettingsFromStorage();
 
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP("ESP32-HOST");
+    // WiFi.mode(WIFI_AP);
+    // WiFi.softAP("ESP32-HOST");
 
-    initESP_NOW();   // Инициализируем сеть
-    initWebServer(); // Запускаем веб-сервер одной строчкой!
+    // initESP_NOW();   // Инициализируем сеть
+    // initWebServer(); // Запускаем веб-сервер одной строчкой!
 }
 
 void loop()
 {
-    handleWateringLogic();
+    // handleWateringLogic();
+
+    led.update();
+
+    
 }

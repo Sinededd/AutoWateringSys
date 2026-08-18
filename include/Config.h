@@ -6,7 +6,7 @@ namespace Config {
 
     // --- Purpose of pins GPIO ---
     namespace Pins {
-        constexpr uint8_t LED_PIN = 2;   // built-in LED
+        constexpr uint8_t LED_PIN = LED_BUILTIN;   // built-in LED
         constexpr uint8_t VALVE_PIN = 4; // water pump relay
     }
 
@@ -17,6 +17,6 @@ namespace Config {
 
     // --- Default settings and limits ---
     namespace Defaults {
-
+        constexpr unsigned long VALVE_MAX_WATERING_DURATION_MS = 300000; // 5 minutes
     }
 }
