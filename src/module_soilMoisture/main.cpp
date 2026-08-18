@@ -99,8 +99,6 @@ void setup()
 
     // Настройка базовой периферии
     pinMode(LED_PIN, OUTPUT);
-    pinMode(SENSOR_POWER_PIN, OUTPUT);
-    digitalWrite(SENSOR_POWER_PIN, LOW);
 
     // Настраиваем кнопку и СРАЗУ снимаем фиксацию пина (если она осталась с прошлого сна)
     pinMode(BUTTON_PIN, INPUT_PULLUP);

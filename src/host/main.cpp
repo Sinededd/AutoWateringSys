@@ -22,6 +22,7 @@
 
 // PIN Settings
 const uint8_t LED_PIN = 2;
+const uint8_t VALVE_PIN = 4;
 
 struct_message incomingReadings;
 struct_message outgoingSetpoints;
@@ -31,6 +32,97 @@ extern AsyncEventSource events;
 
 const char *ssid = "ESP32-HOST";
 bool ledActive = true;
+
+bool isDeviceAlive(size_t index)
+{
+    if (deviceLastSeenMs[index] == 0)
+        return false; // Датчик еще ни разу не выходил на связь
+
+    // Формула таймаута: период сна * макс пропусков. Добавим запас 5 секунд на девиацию таймеров
+    uint32_t heartbeatTimeoutMs = (pairedDevices[index].timeToSleepSec * pairedDevices[index].maxSkippedBoots * 1000) + 5000;
+
+    return (millis() - deviceLastSeenMs[index]) < heartbeatTimeoutMs;
+}
+
+bool checkWateringTrigger()
+{
+    int aliveCount = 0;
+    float sumHumidity = 0;
+    float minHumidity = 200.0f; // Инициализируем заведомо большим числом
+
+    for (size_t i = 0; i < deviceCount; i++)
+    {
+        if (isDeviceAlive(i) && deviceLastHumidity[i] >= 0)
+        {
+            aliveCount++;
+            sumHumidity += deviceLastHumidity[i];
+            if (deviceLastHumidity[i] < minHumidity)
+            {
+                minHumidity = deviceLastHumidity[i];
+            }
+        }
+    }
+
+    if (aliveCount == 0)
+    {
+        // Если все датчики мертвы, полив не включаем в целях безопасности (чтобы не затопить)
+        return false;
+    }
+
+    if (currentWateringMode == MODE_AVERAGE)
+    {
+        float avgHumidity = sumHumidity / aliveCount;
+        return avgHumidity < globalMoistureThreshold;
+    }
+    else if (currentWateringMode == MODE_MINIMUM)
+    {
+        return minHumidity < globalMoistureThreshold;
+    }
+
+    return false;
+}
+
+void handleWateringLogic()
+{
+    switch (currentValveState)
+    {
+    case VALVE_IDLE:
+        // Проверяем условия полива раз в секунду (или чаще)
+        static uint32_t lastCheck = 0;
+        if (millis() - lastCheck > 2000)
+        {
+            lastCheck = millis();
+            if (checkWateringTrigger())
+            {
+                DEBUG_PRINTLN("[VALVE] Влажность ниже нормы! Включение полива.");
+                digitalWrite(VALVE_PIN, HIGH);
+                digitalWrite(LED_PIN, HIGH);
+                currentValveState = VALVE_WATERING;
+                stateTimerMs = millis();
+            }
+        }
+        break;
+
+    case VALVE_WATERING:
+        if (millis() - stateTimerMs >= wateringDurationMs)
+        {
+            DEBUG_PRINTLN("[VALVE] Время полива истекло. Отключение, переход в режим простоя.");
+            digitalWrite(VALVE_PIN, LOW);
+            digitalWrite(LED_PIN, LOW);
+            currentValveState = VALVE_COOLDOWN;
+            stateTimerMs = millis();
+        }
+        break;
+
+    case VALVE_COOLDOWN:
+        if (millis() - stateTimerMs >= cooldownDurationMs)
+        {
+            DEBUG_PRINTLN("[VALVE] Время обязательного простоя выждано. Переход в режим ожидания.");
+            currentValveState = VALVE_IDLE;
+        }
+        break;
+    }
+}
 
 // Вспомогательная функция для конвертации строки "AA:BB:CC..." в массив байт
 void parseMacAddress(const char *macStr, uint8_t *macBytes)
@@ -126,6 +218,17 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
 
         uint8_t localClientMac[6];
         memcpy(localClientMac, incomingReadings.macAddr, 6);
+
+        for (size_t i = 0; i < deviceCount; i++)
+        {
+            if (memcmp(pairedDevices[i].mac, localClientMac, 6) == 0)
+            {
+                deviceLastSeenMs[i] = millis();
+                deviceLastHumidity[i] = incomingReadings.hum;
+                break;
+            }
+        }
+
         char macStr[18];
         snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
                  localClientMac[0], localClientMac[1], localClientMac[2],
@@ -202,8 +305,10 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
         memcpy(&rxSettings, incomingData, sizeof(rxSettings));
 
         // Ищем устройство в базе и обновляем конфигурацию
-        for (size_t i = 0; i < deviceCount; i++) {
-            if (memcmp(pairedDevices[i].mac, rxSettings.macAddr, 6) == 0) {
+        for (size_t i = 0; i < deviceCount; i++)
+        {
+            if (memcmp(pairedDevices[i].mac, rxSettings.macAddr, 6) == 0)
+            {
                 pairedDevices[i].airValue = rxSettings.airValue;
                 pairedDevices[i].waterValue = rxSettings.waterValue;
                 pairedDevices[i].timeToSleepSec = rxSettings.timeToSleepSec;
@@ -272,7 +377,8 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
                  rxCalib.macAddr[3], rxCalib.macAddr[4], rxCalib.macAddr[5]);
 
         // Валидация входящего значения мВ
-        if (rxCalib.volts < 0 || rxCalib.volts > 4095) {
+        if (rxCalib.volts < 0 || rxCalib.volts > 4095)
+        {
             DEBUG_PRINTF("[CALIB] ОШИБКА: Некорректное значение мВ от датчика: %d\n", rxCalib.volts);
             break;
         }
@@ -283,7 +389,7 @@ void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
 
         String payload;
         serializeJson(doc, payload);
-        
+
         // Отправляем событие в браузер на страницу калибровки
         events.send(payload.c_str(), "calib_stream", millis());
         break;
@@ -326,6 +432,15 @@ void setup()
         return;
     }
 
+
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, LOW);
+
+    pinMode(VALVE_PIN, OUTPUT);
+    digitalWrite(VALVE_PIN, LOW);
+
+    loadWateringSettingsFromStorage();
+
     WiFi.mode(WIFI_AP);
     WiFi.softAP("ESP32-HOST");
 
@@ -335,4 +450,5 @@ void setup()
 
 void loop()
 {
+    handleWateringLogic();
 }

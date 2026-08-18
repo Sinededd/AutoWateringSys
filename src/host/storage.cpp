@@ -5,6 +5,14 @@ Preferences preferences;
 
 PairedDevice pairedDevices[MAX_DEVICES];
 size_t deviceCount = 0;
+WateringMode currentWateringMode = MODE_AVERAGE;
+int globalMoistureThreshold = 40; 
+uint32_t wateringDurationMs = 30000; 
+uint32_t cooldownDurationMs = 600000; 
+ValveState currentValveState = VALVE_IDLE;
+uint32_t stateTimerMs = 0;
+uint32_t deviceLastSeenMs[MAX_DEVICES] = {0};
+float deviceLastHumidity[MAX_DEVICES] = {-1.0f};
 
 void printMac(const uint8_t *mac) {
     Serial.printf("%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -89,4 +97,33 @@ bool renameDevice(const uint8_t *mac, const char *newName) {
         }
     }
     return false;
+}
+
+void saveWateringSettingsToStorage() {
+    Preferences prefs;
+    // Открываем пространство имен "watering", false означает режим чтение/запись
+    prefs.begin("watering", false); 
+    
+    prefs.putInt("mode", (int)currentWateringMode);
+    prefs.putInt("threshold", globalMoistureThreshold);
+    prefs.putUInt("duration", wateringDurationMs);
+    prefs.putUInt("cooldown", cooldownDurationMs);
+    
+    prefs.end();
+    Serial.println("[STORAGE] Настройки полива сохранены в NVS.");
+}
+
+void loadWateringSettingsFromStorage() {
+    Preferences prefs;
+    // Открываем пространство имен в режиме "только чтение" (true)
+    prefs.begin("watering", true); 
+    
+    // Второй параметр — это значение по умолчанию, если память еще пуста (первый запуск)
+    currentWateringMode = (WateringMode)prefs.getInt("mode", 0);      // MODE_AVERAGE
+    globalMoistureThreshold = prefs.getInt("threshold", 40);          // 40%
+    wateringDurationMs = prefs.getUInt("duration", 30000);            // 30 секунд
+    cooldownDurationMs = prefs.getUInt("cooldown", 600000);           // 10 минут
+    
+    prefs.end();
+    Serial.println("[STORAGE] Настройки полива успешно загружены из NVS.");
 }

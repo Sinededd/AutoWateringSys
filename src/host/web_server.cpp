@@ -179,6 +179,31 @@ void initWebServer()
             request->send(400, "text/plain", "Bad Request: Missing MAC");
         } });
 
+    server.on("/get_watering_settings", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+        JsonDocument doc;
+        doc["mode"] = (int)currentWateringMode;
+        doc["threshold"] = globalMoistureThreshold;
+        doc["duration"] = wateringDurationMs / 1000; // отдаем в секундах
+        doc["cooldown"] = cooldownDurationMs / 1000; // отдаем в секундах
+        doc["valve_state"] = (int)currentValveState;
+
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response); });
+
+    // Обновить глобальные настройки полива
+    server.on("/update_watering_settings", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+        if (request->hasParam("mode")) currentWateringMode = (WateringMode)request->getParam("mode")->value().toInt();
+        if (request->hasParam("threshold")) globalMoistureThreshold = request->getParam("threshold")->value().toInt();
+        if (request->hasParam("duration")) wateringDurationMs = request->getParam("duration")->value().toInt() * 1000;
+        if (request->hasParam("cooldown")) cooldownDurationMs = request->getParam("cooldown")->value().toInt() * 1000;
+
+        // Здесь можно вызвать функцию сохранения этих 4 переменных в Preferences, чтобы они не стирались при перезагрузке хоста
+        saveWateringSettingsToStorage();
+        request->send(200, "text/plain", "Глобальные настройки полива обновлены"); });
+
     server.begin();
     Serial.println("[Web] HTTP веб-сервер успешно запущен.");
 }
