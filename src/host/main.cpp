@@ -22,6 +22,7 @@
 #include "Logger.h"
 #include "Config.h"
 #include <Led.h>
+#include <common/network/EspNowManager.h>
 
 // PIN Settings
 const uint8_t LED_PIN = 2;
@@ -422,9 +423,10 @@ void initESP_NOW()
     }
 }
 
-static const char* TAG = "Main";
+static const char *TAG = "Main";
 
 Led led(Config::Pins::LED_PIN, false);
+EspNowManager network();
 
 void setup()
 {
@@ -438,7 +440,6 @@ void setup()
     //     LOG_E(TAG, "Ошибка LittleFS!");
     //     return;
     // }
-
 
     // pinMode(LED_PIN, OUTPUT);
     // digitalWrite(LED_PIN, LOW);
@@ -460,6 +461,4 @@ void loop()
     // handleWateringLogic();
 
     led.update();
-
-    
 }
