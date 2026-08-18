@@ -19,6 +19,7 @@
 #include "storage.h"
 #include "web_server.h"
 #include "../common/types.h"
+#include "Logger.h"
 
 // PIN Settings
 const uint8_t LED_PIN = 2;
@@ -419,16 +420,16 @@ void initESP_NOW()
     }
 }
 
+static const char* TAG = "Main";
+
 void setup()
 {
-#ifdef DEBUG_ENABLE
-    Serial.begin(115200);
-    delay(1000);
-#endif
+    Logger::begin();
+    LOG_I(TAG, "Start...");
 
     if (!LittleFS.begin(true))
     {
-        Serial.println("Ошибка LittleFS!");
+        LOG_E(TAG, "Ошибка LittleFS!");
         return;
     }
 
