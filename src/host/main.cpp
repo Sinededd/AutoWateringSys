@@ -23,6 +23,7 @@
 #include "Config.h"
 #include <Led.h>
 #include <common/network/EspNowManager.h>
+#include "cli/Cli.h"
 
 // PIN Settings
 const uint8_t LED_PIN = 2;
@@ -424,8 +425,10 @@ void initESP_NOW()
 }
 
 static const char *TAG = "Main";
+CliManager cli;
 
 Led led(Config::Pins::LED_PIN, false);
+Valve valve(VALVE_PIN);
 EspNowManager network();
 
 void setup()
@@ -434,7 +437,9 @@ void setup()
     LOG_I(TAG, "Start...");
 
     led.begin();
-
+    valve.begin();
+    cli.setLed(&led);
+    cli.setValve(&valve);
     // if (!LittleFS.begin(true))
     // {
     //     LOG_E(TAG, "Ошибка LittleFS!");
@@ -461,4 +466,6 @@ void loop()
     // handleWateringLogic();
 
     led.update();
+    valve.update();
+    cli.update();
 }
