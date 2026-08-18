@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "Config.h"
 
 // Logging level
 #define LOG_LEVEL_NONE  0
@@ -15,7 +16,7 @@
 
 class Logger {
 public:
-    static void begin(unsigned long baud = 115200) {
+    static void begin(unsigned long baud = Config::Hardware::SERIAL_BAUD_RATE) {
 #if (LOG_LEVEL > LOG_LEVEL_NONE)
         Serial.begin(baud);
         while (!Serial && millis() < 2000);
